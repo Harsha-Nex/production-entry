@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Production Entry</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#12181f">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand-row">
+    <div class="brand"><span class="brand-dot"></span>Production Entry</div>
+    <div class="status-group">
+      <span id="pendingPill" class="pill pill-pending hidden">0 queued</span>
+      <span id="netPill" class="pill pill-online">Online</span>
+    </div>
+  </div>
+  <div id="sessionBar" class="session-bar hidden">
+    <span id="sessionInfo"></span>
+    <div class="session-actions">
+      <button type="button" id="settingsBtn" class="icon-btn" aria-label="Settings">⚙</button>
+      <button type="button" id="switchUserBtn" class="link-btn">Switch user</button>
+    </div>
+  </div>
+</header>
+
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <div class="login-title" id="loginTitle">Enter your PIN</div>
+    <div id="pinDots" class="pin-dots"></div>
+    <div id="loginError" class="login-error hidden"></div>
+    <div class="keypad" id="keypad">
+      <button type="button" data-k="1">1</button>
+      <button type="button" data-k="2">2</button>
+      <button type="button" data-k="3">3</button>
+      <button type="button" data-k="4">4</button>
+      <button type="button" data-k="5">5</button>
+      <button type="button" data-k="6">6</button>
+      <button type="button" data-k="7">7</button>
+      <button type="button" data-k="8">8</button>
+      <button type="button" data-k="9">9</button>
+      <button type="button" class="keypad-blank" disabled></button>
+      <button type="button" data-k="0">0</button>
+      <button type="button" data-k="back" aria-label="Backspace">⌫</button>
+    </div>
+    <button type="button" id="loginBackBtn" class="link-btn hidden">Back to app</button>
+  </div>
+</div>
+
+<main id="appShell" class="hidden">
+  <form id="entryForm" autocomplete="off">
+
+    <section class="card">
+      <div class="field">
+        <label for="machine">Machine</label>
+        <select id="machine" required></select>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="shift">Shift</label>
+          <select id="shift" required></select>
+        </div>
+        <div class="field">
+          <label for="scheduleSlot">Schedule slot</label>
+          <select id="scheduleSlot" required></select>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="field">
+        <label for="itemCodeInput">Item code or name</label>
+        <input id="itemCodeInput" type="text" placeholder="Start typing to search...">
+        <div id="itemResults" class="item-results hidden"></div>
+      </div>
+      <div id="selectedItem" class="selected-item hidden">
+        <div>
+          <div class="selected-code" id="selectedItemCode"></div>
+          <div class="selected-name" id="selectedItemName"></div>
+        </div>
+        <button type="button" id="clearItem" class="link-btn">Change</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="grid2">
+        <div class="field">
+          <label for="scheduledQty">Scheduled qty</label>
+          <input id="scheduledQty" type="number" inputmode="numeric" min="0" required>
+        </div>
+        <div class="field">
+          <label for="producedQty">Produced qty</label>
+          <input id="producedQty" type="number" inputmode="numeric" min="0" required>
+        </div>
+      </div>
+      <div id="achievementBadge" class="achievement hidden"></div>
+    </section>
+
+    <section class="card" id="lossSection">
+      <div class="field">
+        <label for="reason">Reason for loss <span class="optional">(if below schedule)</span></label>
+        <select id="reason">
+          <option value="">— Select if applicable —</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="remarks">Remarks <span class="optional">(optional)</span></label>
+        <textarea id="remarks" rows="2" placeholder="Any additional detail..."></textarea>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="changeStart">Part change start</label>
+          <input id="changeStart" type="time">
+        </div>
+        <div class="field">
+          <label for="changeEnd">Part change end</label>
+          <input id="changeEnd" type="time">
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="field">
+        <label for="operatorName">Operator name <span class="optional">(optional)</span></label>
+        <input id="operatorName" type="text">
+      </div>
+    </section>
+
+    <button type="submit" id="submitBtn" class="submit-btn">Save entry</button>
+    <div class="footnote">Entries save locally first, then sync automatically when online.</div>
+  </form>
+</main>
+
+<div id="settingsScreen" class="settings-screen hidden">
+  <div class="settings-header">
+    <div class="settings-title">Settings</div>
+    <button type="button" id="closeSettingsBtn" class="icon-btn" aria-label="Close">✕</button>
+  </div>
+
+  <div class="settings-tabs">
+    <button type="button" class="tab-btn active" data-tab="supervisors">Supervisors</button>
+    <button type="button" class="tab-btn" data-tab="machines">Machines</button>
+    <button type="button" class="tab-btn" data-tab="reasons">Reasons</button>
+    <button type="button" class="tab-btn" data-tab="general">General</button>
+  </div>
+
+  <div class="settings-body">
+
+    <div class="tab-panel" id="panel-supervisors">
+      <div id="supervisorsList" class="settings-list"></div>
+      <div class="settings-form">
+        <div class="field">
+          <label for="supName">Name</label>
+          <input id="supName" type="text">
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="supPin">PIN</label>
+            <input id="supPin" type="text" inputmode="numeric" maxlength="4">
+          </div>
+          <div class="field">
+            <label for="supDept">Department</label>
+            <select id="supDept"></select>
+          </div>
+        </div>
+        <button type="button" id="supSaveBtn" class="settings-save-btn">Add supervisor</button>
+        <button type="button" id="supCancelBtn" class="link-btn hidden">Cancel edit</button>
+      </div>
+    </div>
+
+    <div class="tab-panel hidden" id="panel-machines">
+      <div class="field">
+        <label for="machDeptSelect">Department</label>
+        <select id="machDeptSelect"></select>
+      </div>
+      <div id="machinesList" class="settings-list"></div>
+      <div class="settings-form">
+        <div class="field">
+          <label for="newMachineInput">Add machine to this department</label>
+          <input id="newMachineInput" type="text" placeholder="e.g. TH-33">
+        </div>
+        <button type="button" id="addMachineBtn" class="settings-save-btn">Add machine</button>
+      </div>
+      <div class="settings-form">
+        <div class="field">
+          <label for="newDeptName">New department name</label>
+          <input id="newDeptName" type="text" placeholder="e.g. Assembly">
+        </div>
+        <div class="field">
+          <label for="newDeptMachine">First machine in it</label>
+          <input id="newDeptMachine" type="text" placeholder="e.g. AS-01">
+        </div>
+        <button type="button" id="addDeptBtn" class="settings-save-btn">Create department</button>
+      </div>
+    </div>
+
+    <div class="tab-panel hidden" id="panel-reasons">
+      <div id="reasonsList" class="settings-list"></div>
+      <div class="settings-form">
+        <div class="field">
+          <label for="newReasonInput">Add reason</label>
+          <input id="newReasonInput" type="text" placeholder="e.g. Power outage">
+        </div>
+        <button type="button" id="addReasonBtn" class="settings-save-btn">Add reason</button>
+      </div>
+    </div>
+
+    <div class="tab-panel hidden" id="panel-general">
+      <div class="settings-form">
+        <div class="field">
+          <label for="timeoutInput">Session timeout (hours)</label>
+          <input id="timeoutInput" type="number" min="1" max="72">
+        </div>
+        <div class="field">
+          <label for="slotsInput">Max schedule slots per shift</label>
+          <input id="slotsInput" type="number" min="1" max="10">
+        </div>
+        <button type="button" id="saveGeneralBtn" class="settings-save-btn">Save settings</button>
+      </div>
+      <div class="settings-form">
+        <div class="field">
+          <label for="newAdminPinInput">Change admin PIN</label>
+          <input id="newAdminPinInput" type="text" inputmode="numeric" maxlength="4" placeholder="New 4-digit PIN">
+        </div>
+        <button type="button" id="saveAdminPinBtn" class="settings-save-btn">Update admin PIN</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
