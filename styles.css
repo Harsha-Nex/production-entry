@@ -443,3 +443,62 @@ textarea { resize: vertical; }
 }
 
 .settings-save-btn:active { background: var(--accent-dim); color: #cdeee8; }
+
+/* ---------- Shift capacity UI ---------- */
+
+.shift-usage {
+  margin-top: 14px;
+}
+
+.shift-usage.hidden { display: none; }
+
+.shift-usage-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.shift-usage-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #10161d;
+  overflow: hidden;
+}
+
+.shift-usage-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  width: 0%;
+  transition: width 0.2s ease;
+}
+
+.shift-usage-fill.usage-amber { background: var(--amber); }
+.shift-usage-fill.usage-red { background: var(--red); }
+
+.capacity-warning {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(226, 166, 59, 0.14);
+  color: var(--amber);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.capacity-warning.hidden { display: none; }
+
+.scheduled-preview {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #10161d;
+  border: 1px solid var(--card-border);
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.scheduled-preview.hidden { display: none; }
+.scheduled-preview strong { color: var(--text); }

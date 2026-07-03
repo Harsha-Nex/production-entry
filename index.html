@@ -91,13 +91,33 @@
     <section class="card">
       <div class="grid2">
         <div class="field">
-          <label for="scheduledQty">Scheduled qty</label>
-          <input id="scheduledQty" type="number" inputmode="numeric" min="0" required>
+          <label for="changeStart">Schedule start time</label>
+          <input id="changeStart" type="time" required>
         </div>
         <div class="field">
-          <label for="producedQty">Produced qty</label>
-          <input id="producedQty" type="number" inputmode="numeric" min="0" required>
+          <label for="changeEnd">Schedule end time</label>
+          <input id="changeEnd" type="time" required>
         </div>
+      </div>
+      <div id="shiftUsageBar" class="shift-usage hidden">
+        <div class="shift-usage-row">
+          <span id="shiftUsageLabel">Shift time used</span>
+          <span id="shiftUsagePct"></span>
+        </div>
+        <div class="shift-usage-track"><div id="shiftUsageFill" class="shift-usage-fill"></div></div>
+      </div>
+      <div id="capacityWarning" class="capacity-warning hidden">
+        Capacity not set for this machine yet — ask your admin to set it in Settings → Machines.
+      </div>
+      <div id="scheduledPreview" class="scheduled-preview hidden">
+        Auto-scheduled qty for this entry: <strong id="scheduledPreviewQty">0</strong>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="field">
+        <label for="producedQty">Produced qty</label>
+        <input id="producedQty" type="number" inputmode="numeric" min="0" required>
       </div>
       <div id="achievementBadge" class="achievement hidden"></div>
     </section>
@@ -112,16 +132,6 @@
       <div class="field">
         <label for="remarks">Remarks <span class="optional">(optional)</span></label>
         <textarea id="remarks" rows="2" placeholder="Any additional detail..."></textarea>
-      </div>
-      <div class="grid2">
-        <div class="field">
-          <label for="changeStart">Part change start</label>
-          <input id="changeStart" type="time">
-        </div>
-        <div class="field">
-          <label for="changeEnd">Part change end</label>
-          <input id="changeEnd" type="time">
-        </div>
       </div>
     </section>
 
@@ -181,9 +191,15 @@
       </div>
       <div id="machinesList" class="settings-list"></div>
       <div class="settings-form">
-        <div class="field">
-          <label for="newMachineInput">Add machine to this department</label>
-          <input id="newMachineInput" type="text" placeholder="e.g. TH-33">
+        <div class="grid2">
+          <div class="field">
+            <label for="newMachineInput">Add machine to this department</label>
+            <input id="newMachineInput" type="text" placeholder="e.g. TH-33">
+          </div>
+          <div class="field">
+            <label for="newMachineCapacity">Capacity per minute</label>
+            <input id="newMachineCapacity" type="number" min="0" step="0.1" placeholder="e.g. 12">
+          </div>
         </div>
         <button type="button" id="addMachineBtn" class="settings-save-btn">Add machine</button>
       </div>
@@ -192,9 +208,15 @@
           <label for="newDeptName">New department name</label>
           <input id="newDeptName" type="text" placeholder="e.g. Assembly">
         </div>
-        <div class="field">
-          <label for="newDeptMachine">First machine in it</label>
-          <input id="newDeptMachine" type="text" placeholder="e.g. AS-01">
+        <div class="grid2">
+          <div class="field">
+            <label for="newDeptMachine">First machine in it</label>
+            <input id="newDeptMachine" type="text" placeholder="e.g. AS-01">
+          </div>
+          <div class="field">
+            <label for="newDeptMachineCapacity">Its capacity per minute</label>
+            <input id="newDeptMachineCapacity" type="number" min="0" step="0.1" placeholder="e.g. 12">
+          </div>
         </div>
         <button type="button" id="addDeptBtn" class="settings-save-btn">Create department</button>
       </div>
@@ -213,6 +235,20 @@
 
     <div class="tab-panel hidden" id="panel-general">
       <div class="settings-form">
+        <div class="field">
+          <label>Day shift clock</label>
+          <div class="grid2">
+            <input id="dayShiftStartInput" type="time">
+            <input id="dayShiftEndInput" type="time">
+          </div>
+        </div>
+        <div class="field">
+          <label>Night shift clock</label>
+          <div class="grid2">
+            <input id="nightShiftStartInput" type="time">
+            <input id="nightShiftEndInput" type="time">
+          </div>
+        </div>
         <div class="field">
           <label for="timeoutInput">Session timeout (hours)</label>
           <input id="timeoutInput" type="number" min="1" max="72">

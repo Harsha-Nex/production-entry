@@ -8,13 +8,14 @@
   const CONFIG_CACHE_KEY = "prodentry_config_cache_v1";
 
   let ITEMS = [];
-  let SERVER_CONFIG = null; // { departments, reasons, sessionTimeoutHours, maxScheduleSlots }
+  let SERVER_CONFIG = null; // { departments: {dept: [{machine, capacityPerMin}]}, reasons, sessionTimeoutHours, maxScheduleSlots, shiftTimes }
   let selectedItem = null;
   let session = null; // { name, department, loginAt }
   let currentPin = "";
   let loginMode = "supervisor"; // "supervisor" | "admin"
   let adminPin = null; // in-memory only, cleared when Settings closes
   let editingSupervisorPin = null;
+  let shiftUsage = null; // latest { usedMinutes, totalMinutes, capacityPerMin, ... } for current machine+shift+today
 
   const $ = (id) => document.getElementById(id);
 
@@ -28,13 +29,19 @@
     selectedItemCode: $("selectedItemCode"),
     selectedItemName: $("selectedItemName"),
     clearItem: $("clearItem"),
-    scheduledQty: $("scheduledQty"),
+    changeStart: $("changeStart"),
+    changeEnd: $("changeEnd"),
+    shiftUsageBar: $("shiftUsageBar"),
+    shiftUsageLabel: $("shiftUsageLabel"),
+    shiftUsagePct: $("shiftUsagePct"),
+    shiftUsageFill: $("shiftUsageFill"),
+    capacityWarning: $("capacityWarning"),
+    scheduledPreview: $("scheduledPreview"),
+    scheduledPreviewQty: $("scheduledPreviewQty"),
     producedQty: $("producedQty"),
     achievementBadge: $("achievementBadge"),
     reason: $("reason"),
     remarks: $("remarks"),
-    changeStart: $("changeStart"),
-    changeEnd: $("changeEnd"),
     operatorName: $("operatorName"),
     form: $("entryForm"),
     submitBtn: $("submitBtn"),
@@ -63,13 +70,19 @@
     machDeptSelect: $("machDeptSelect"),
     machinesList: $("machinesList"),
     newMachineInput: $("newMachineInput"),
+    newMachineCapacity: $("newMachineCapacity"),
     addMachineBtn: $("addMachineBtn"),
     newDeptName: $("newDeptName"),
     newDeptMachine: $("newDeptMachine"),
+    newDeptMachineCapacity: $("newDeptMachineCapacity"),
     addDeptBtn: $("addDeptBtn"),
     reasonsList: $("reasonsList"),
     newReasonInput: $("newReasonInput"),
     addReasonBtn: $("addReasonBtn"),
+    dayShiftStartInput: $("dayShiftStartInput"),
+    dayShiftEndInput: $("dayShiftEndInput"),
+    nightShiftStartInput: $("nightShiftStartInput"),
+    nightShiftEndInput: $("nightShiftEndInput"),
     timeoutInput: $("timeoutInput"),
     slotsInput: $("slotsInput"),
     saveGeneralBtn: $("saveGeneralBtn"),
@@ -108,10 +121,30 @@
     els.toast.textContent = msg;
     els.toast.classList.remove("hidden");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => els.toast.classList.add("hidden"), 2600);
+    toastTimer = setTimeout(() => els.toast.classList.add("hidden"), 3200);
   }
 
-  // ---------- Server config (departments/machines, reasons, timeout) ----------
+  function todayDateStr() {
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  function parseHHMM(str) {
+    const parts = String(str).split(":");
+    const h = Number(parts[0]) || 0;
+    const m = Number(parts[1]) || 0;
+    return h * 60 + m;
+  }
+
+  function computeDurationMinutes(startStr, endStr) {
+    if (!startStr || !endStr) return 0;
+    const s = parseHHMM(startStr);
+    let e = parseHHMM(endStr);
+    if (e <= s) e += 24 * 60; // crosses midnight (night shift)
+    return e - s;
+  }
+
+  // ---------- Server config (departments/machines, reasons, timeout, shift clock) ----------
 
   async function loadServerConfig(forceRefresh) {
     if (!forceRefresh) {
@@ -139,7 +172,7 @@
         const res = await fetch("bootstrap-config.json");
         SERVER_CONFIG = await res.json();
       } catch (e) {
-        SERVER_CONFIG = { departments: {}, reasons: [], sessionTimeoutHours: 12, maxScheduleSlots: 4 };
+        SERVER_CONFIG = { departments: {}, reasons: [], sessionTimeoutHours: 12, maxScheduleSlots: 4, shiftTimes: {} };
       }
     }
   }
@@ -165,9 +198,19 @@
     });
   }
 
+  function getDeptMachines(dept) {
+    return (SERVER_CONFIG.departments && SERVER_CONFIG.departments[dept]) || [];
+  }
+
   function populateMachinesForDept(dept) {
-    const machines = (SERVER_CONFIG.departments && SERVER_CONFIG.departments[dept]) || [];
-    fillSelect(els.machine, machines, "Select machine");
+    const names = getDeptMachines(dept).map((m) => m.machine);
+    fillSelect(els.machine, names, "Select machine");
+  }
+
+  function getSelectedMachineCapacity() {
+    if (!session) return 0;
+    const found = getDeptMachines(session.department).find((m) => m.machine === els.machine.value);
+    return found ? Number(found.capacityPerMin) || 0 : 0;
   }
 
   // ---------- Remember last machine/shift (speeds up repeat entries) ----------
@@ -228,6 +271,7 @@
     els.sessionInfo.textContent = s.name + " · " + s.department;
     populateMachinesForDept(s.department);
     applyLast();
+    refreshShiftUsage();
   }
 
   function openLoginScreen(mode, message) {
@@ -330,6 +374,80 @@
         openLoginScreen("supervisor", "Session expired — please log in again.");
       }
     }, 60000);
+  }
+
+  // ---------- Shift usage (time-based capacity) ----------
+
+  async function fetchShiftUsage(dept, machine, shift) {
+    if (!CONFIG.APPS_SCRIPT_URL || !navigator.onLine || !dept || !machine || !shift) return null;
+    try {
+      const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "getShiftUsage", secretToken: CONFIG.SECRET_TOKEN,
+          department: dept, machine: machine, shift: shift, date: todayDateStr(),
+        }),
+      });
+      const data = await res.json();
+      if (data && data.status === "ok") return data;
+    } catch (e) { /* offline or unreachable */ }
+    return null;
+  }
+
+  async function refreshShiftUsage() {
+    if (!session || !els.machine.value || !els.shift.value) {
+      els.shiftUsageBar.classList.add("hidden");
+      shiftUsage = null;
+      return;
+    }
+    shiftUsage = await fetchShiftUsage(session.department, els.machine.value, els.shift.value);
+    renderShiftUsage();
+  }
+
+  function renderShiftUsage() {
+    if (!shiftUsage) {
+      els.shiftUsageBar.classList.add("hidden");
+      return;
+    }
+    const usedMin = shiftUsage.usedMinutes || 0;
+    const totalMin = shiftUsage.totalMinutes || 0;
+    const thisMin = computeDurationMinutes(els.changeStart.value, els.changeEnd.value);
+    const projected = usedMin + (thisMin > 0 ? thisMin : 0);
+    const pct = totalMin > 0 ? Math.round((projected / totalMin) * 100) : 0;
+
+    els.shiftUsageBar.classList.remove("hidden");
+    els.shiftUsagePct.textContent = pct + "%";
+    els.shiftUsageLabel.textContent =
+      "Shift time: " + fmtHM(usedMin) + " used of " + fmtHM(totalMin);
+    els.shiftUsageFill.style.width = Math.min(100, pct) + "%";
+    els.shiftUsageFill.classList.remove("usage-amber", "usage-red");
+    if (pct >= 100) els.shiftUsageFill.classList.add("usage-red");
+    else if (pct >= 80) els.shiftUsageFill.classList.add("usage-amber");
+  }
+
+  function fmtHM(mins) {
+    const h = Math.floor(mins / 60);
+    const m = Math.round(mins % 60);
+    return h + "h " + m + "m";
+  }
+
+  function onEntryInputsChanged() {
+    const thisMin = computeDurationMinutes(els.changeStart.value, els.changeEnd.value);
+    const capacity = getSelectedMachineCapacity();
+
+    if (thisMin > 0) {
+      els.capacityWarning.classList.toggle("hidden", !!capacity);
+      const scheduled = Math.round(thisMin * capacity);
+      els.scheduledPreviewQty.textContent = String(scheduled);
+      els.scheduledPreview.classList.remove("hidden");
+      updateAchievement(scheduled);
+    } else {
+      els.scheduledPreview.classList.add("hidden");
+      els.capacityWarning.classList.add("hidden");
+      els.achievementBadge.classList.add("hidden");
+    }
+    renderShiftUsage();
   }
 
   // ---------- Admin / Settings ----------
@@ -444,7 +562,7 @@
 
   function refreshMachinesList() {
     const dept = els.machDeptSelect.value;
-    const machines = (SERVER_CONFIG.departments && SERVER_CONFIG.departments[dept]) || [];
+    const machines = getDeptMachines(dept);
     els.machinesList.innerHTML = "";
     if (!machines.length) {
       els.machinesList.innerHTML = '<div class="settings-empty">No machines in this department yet.</div>';
@@ -454,8 +572,12 @@
       const row = document.createElement("div");
       row.className = "settings-row";
       row.innerHTML =
-        '<div class="settings-row-title">' + escapeHtml(m) + '</div>' +
-        '<button type="button" class="remove-x" data-remove="' + escapeHtml(m) + '" aria-label="Remove">×</button>';
+        '<div><div class="settings-row-title">' + escapeHtml(m.machine) + '</div>' +
+        '<div class="settings-row-sub">' + (m.capacityPerMin || 0) + ' / min</div></div>' +
+        '<div class="settings-row-actions">' +
+        '<button type="button" class="link-btn" data-editcap="' + escapeHtml(m.machine) + '">Edit capacity</button>' +
+        '<button type="button" class="remove-x" data-remove="' + escapeHtml(m.machine) + '" aria-label="Remove">×</button>' +
+        '</div>';
       els.machinesList.appendChild(row);
     });
     els.machinesList.querySelectorAll("[data-remove]").forEach((btn) => {
@@ -468,6 +590,26 @@
           refreshMachinesList();
         } else {
           showToast(data.message || "Could not remove");
+        }
+      });
+    });
+    els.machinesList.querySelectorAll("[data-editcap]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const current = machines.find((x) => x.machine === btn.dataset.editcap);
+        const newVal = prompt("New capacity per minute for " + btn.dataset.editcap + ":", current ? current.capacityPerMin : 0);
+        if (newVal === null) return;
+        const num = Number(newVal);
+        if (isNaN(num) || num < 0) {
+          showToast("Enter a valid number");
+          return;
+        }
+        const data = await adminPost("updateMachineCapacity", { department: dept, machine: btn.dataset.editcap, capacityPerMin: num });
+        if (data.status === "ok") {
+          showToast("Capacity updated");
+          await loadServerConfig(true);
+          refreshMachinesList();
+        } else {
+          showToast(data.message || "Could not update");
         }
       });
     });
@@ -508,6 +650,11 @@
     els.timeoutInput.value = (SERVER_CONFIG && SERVER_CONFIG.sessionTimeoutHours) || 12;
     els.slotsInput.value = (SERVER_CONFIG && SERVER_CONFIG.maxScheduleSlots) || 4;
     els.newAdminPinInput.value = "";
+    const st = (SERVER_CONFIG && SERVER_CONFIG.shiftTimes) || {};
+    els.dayShiftStartInput.value = (st.Day && st.Day.start) || "09:00";
+    els.dayShiftEndInput.value = (st.Day && st.Day.end) || "17:30";
+    els.nightShiftStartInput.value = (st.Night && st.Night.start) || "17:30";
+    els.nightShiftEndInput.value = (st.Night && st.Night.end) || "09:00";
   }
 
   // ---------- Item master (bundled + refreshed from server when online) ----------
@@ -596,14 +743,13 @@
 
   // ---------- Achievement badge ----------
 
-  function updateAchievement() {
-    const sched = parseFloat(els.scheduledQty.value);
+  function updateAchievement(scheduledQty) {
     const prod = parseFloat(els.producedQty.value);
-    if (isNaN(sched) || isNaN(prod) || sched <= 0) {
+    if (isNaN(prod) || !scheduledQty) {
       els.achievementBadge.classList.add("hidden");
       return;
     }
-    const pct = Math.min(100, Math.round((prod / sched) * 100));
+    const pct = Math.round((prod / scheduledQty) * 100);
     els.achievementBadge.textContent = pct + "% of schedule";
     els.achievementBadge.classList.remove("hidden", "ach-green", "ach-amber", "ach-red");
     if (pct >= 95) els.achievementBadge.classList.add("ach-green");
@@ -646,12 +792,22 @@
     let q = getQueue();
     if (!q.length) return;
     const remaining = [];
+    const rejectedMsgs = [];
     for (const entry of q) {
-      const ok = await sendToServer(entry);
-      if (!ok) remaining.push(entry);
+      const result = await sendToServer(entry);
+      if (result.ok) continue;
+      if (result.rejected) {
+        rejectedMsgs.push((entry.machine || "") + " " + (entry.shift || "") + ": " + (result.message || "rejected"));
+        continue; // don't keep retrying something the server actively refused
+      }
+      remaining.push(entry); // network problem — retry later
     }
     setQueue(remaining);
-    if (remaining.length === 0) showToast("Synced all queued entries");
+    if (rejectedMsgs.length) {
+      showToast(rejectedMsgs.length + " queued entr" + (rejectedMsgs.length === 1 ? "y" : "ies") + " couldn't be saved: " + rejectedMsgs[0]);
+    } else if (remaining.length === 0 && q.length > 0) {
+      showToast("Synced all queued entries");
+    }
   }
 
   async function sendToServer(entry) {
@@ -661,11 +817,12 @@
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(entry),
       });
-      if (!res.ok) return false;
+      if (!res.ok) return { ok: false, rejected: false };
       const data = await res.json();
-      return data && data.status === "ok";
+      if (data && data.status === "ok") return { ok: true };
+      return { ok: false, rejected: true, message: data && data.message };
     } catch (e) {
-      return false;
+      return { ok: false, rejected: false };
     }
   }
 
@@ -687,14 +844,16 @@
 
   function resetEntryFields() {
     clearItem();
-    els.scheduledQty.value = "";
-    els.producedQty.value = "";
-    els.achievementBadge.classList.add("hidden");
-    els.reason.value = "";
-    els.remarks.value = "";
     els.changeStart.value = "";
     els.changeEnd.value = "";
+    els.producedQty.value = "";
+    els.achievementBadge.classList.add("hidden");
+    els.scheduledPreview.classList.add("hidden");
+    els.capacityWarning.classList.add("hidden");
+    els.reason.value = "";
+    els.remarks.value = "";
     els.operatorName.value = "";
+    renderShiftUsage();
   }
 
   function uuid() {
@@ -762,14 +921,16 @@
   els.addMachineBtn.addEventListener("click", async () => {
     const dept = els.machDeptSelect.value;
     const machine = els.newMachineInput.value.trim();
+    const capacity = Number(els.newMachineCapacity.value) || 0;
     if (!dept || !machine) {
       showToast("Pick a department and enter a machine name");
       return;
     }
-    const data = await adminPost("addMachine", { department: dept, machine });
+    const data = await adminPost("addMachine", { department: dept, machine, capacityPerMin: capacity });
     if (data.status === "ok") {
       showToast("Machine added");
       els.newMachineInput.value = "";
+      els.newMachineCapacity.value = "";
       await loadServerConfig(true);
       refreshMachinesList();
     } else {
@@ -780,15 +941,17 @@
   els.addDeptBtn.addEventListener("click", async () => {
     const dept = els.newDeptName.value.trim();
     const machine = els.newDeptMachine.value.trim();
+    const capacity = Number(els.newDeptMachineCapacity.value) || 0;
     if (!dept || !machine) {
       showToast("Enter a department name and its first machine");
       return;
     }
-    const data = await adminPost("addMachine", { department: dept, machine });
+    const data = await adminPost("addMachine", { department: dept, machine, capacityPerMin: capacity });
     if (data.status === "ok") {
       showToast("Department created");
       els.newDeptName.value = "";
       els.newDeptMachine.value = "";
+      els.newDeptMachineCapacity.value = "";
       await loadServerConfig(true);
       populateMachDeptSelect();
       populateSupDeptSelect();
@@ -818,11 +981,16 @@
     const data = await adminPost("updateSettings", {
       sessionTimeoutHours: els.timeoutInput.value,
       maxScheduleSlots: els.slotsInput.value,
+      dayShiftStart: els.dayShiftStartInput.value,
+      dayShiftEnd: els.dayShiftEndInput.value,
+      nightShiftStart: els.nightShiftStartInput.value,
+      nightShiftEnd: els.nightShiftEndInput.value,
     });
     if (data.status === "ok") {
       showToast("Settings saved");
       await loadServerConfig(true);
       populateStaticFields();
+      refreshShiftUsage();
     } else {
       showToast(data.message || "Could not save");
     }
@@ -847,14 +1015,23 @@
 
   // ---------- Event wiring: entry form ----------
 
+  els.machine.addEventListener("change", () => {
+    refreshShiftUsage();
+    onEntryInputsChanged();
+  });
+  els.shift.addEventListener("change", () => {
+    refreshShiftUsage();
+    onEntryInputsChanged();
+  });
+  els.changeStart.addEventListener("input", onEntryInputsChanged);
+  els.changeEnd.addEventListener("input", onEntryInputsChanged);
+  els.producedQty.addEventListener("input", onEntryInputsChanged);
+
   els.itemCodeInput.addEventListener("input", () => {
     renderItemResults(searchItems(els.itemCodeInput.value));
   });
 
   els.clearItem.addEventListener("click", clearItem);
-
-  els.scheduledQty.addEventListener("input", updateAchievement);
-  els.producedQty.addEventListener("input", updateAchievement);
 
   window.addEventListener("online", () => {
     updateNetPill();
@@ -878,6 +1055,20 @@
       return;
     }
 
+    const thisMin = computeDurationMinutes(els.changeStart.value, els.changeEnd.value);
+    if (thisMin <= 0) {
+      showToast("Enter a valid start and end time for this schedule");
+      return;
+    }
+    if (shiftUsage) {
+      const projected = (shiftUsage.usedMinutes || 0) + thisMin;
+      if (projected > (shiftUsage.totalMinutes || 0) + 0.5) {
+        const remaining = Math.max(0, Math.round((shiftUsage.totalMinutes || 0) - (shiftUsage.usedMinutes || 0)));
+        showToast("This exceeds the shift's remaining time (" + remaining + " min left). Adjust the times.");
+        return;
+      }
+    }
+
     const entry = {
       entryId: uuid(),
       clientTimestamp: new Date().toISOString(),
@@ -888,7 +1079,6 @@
       scheduleSlot: els.scheduleSlot.value,
       itemCode: selectedItem.code,
       itemName: selectedItem.name,
-      scheduledQty: els.scheduledQty.value,
       producedQty: els.producedQty.value,
       reason: els.reason.value,
       remarks: els.remarks.value,
@@ -900,18 +1090,23 @@
 
     saveLast();
 
-    let sentNow = false;
     if (navigator.onLine && CONFIG.APPS_SCRIPT_URL) {
-      sentNow = await sendToServer(entry);
+      const result = await sendToServer(entry);
+      if (result.rejected) {
+        showToast(result.message || "Could not save — adjust the entry and try again");
+        return; // keep the form as-is so they can fix it
+      }
+      if (result.ok) {
+        showToast("Entry saved");
+        resetEntryFields();
+        refreshShiftUsage();
+        return;
+      }
     }
 
-    if (!sentNow) {
-      enqueue(entry);
-      showToast(CONFIG.APPS_SCRIPT_URL ? "Saved offline — will sync" : "Saved locally (no server configured)");
-    } else {
-      showToast("Entry saved");
-    }
-
+    // Network unreachable (not an active rejection) — queue for later.
+    enqueue(entry);
+    showToast(CONFIG.APPS_SCRIPT_URL ? "Saved offline — will sync" : "Saved locally (no server configured)");
     resetEntryFields();
   });
 

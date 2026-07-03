@@ -8,7 +8,6 @@
 
 const CONFIG = {
 
-  
   // Paste the Web App URL from Code.gs deployment (see DEPLOY_GUIDE.md).
   APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzjAkG8cjXmEFfmND22xxGjxxWeMTmGeATfkvS3gcyZA1j7hRn8hP9tanWlH6nMHhHnCQ/exec",
 
