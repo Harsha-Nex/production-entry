@@ -301,6 +301,19 @@
     }
   }
 
+  let loginBusy = false;
+
+  function setLoginBusy(busy, label) {
+    loginBusy = busy;
+    els.keypad.classList.toggle("keypad-busy", busy);
+    if (busy) {
+      els.loginTitle.dataset.prevText = els.loginTitle.textContent;
+      els.loginTitle.textContent = label || "Checking…";
+    } else if (els.loginTitle.dataset.prevText) {
+      delete els.loginTitle.dataset.prevText;
+    }
+  }
+
   async function attemptLogin(pin) {
     if (!CONFIG.APPS_SCRIPT_URL) {
       openLoginScreen("supervisor", "No server configured yet — set APPS_SCRIPT_URL in config.js.");
@@ -310,6 +323,7 @@
       openLoginScreen("supervisor", "Connect to the internet once to log in on this device.");
       return;
     }
+    setLoginBusy(true, "Checking PIN…");
     try {
       const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
         method: "POST",
@@ -325,6 +339,8 @@
       }
     } catch (e) {
       openLoginScreen("supervisor", "Could not reach the server. Check your connection and try again.");
+    } finally {
+      setLoginBusy(false);
     }
   }
 
@@ -337,6 +353,7 @@
       openLoginScreen("admin", "Connect to the internet to open Settings.");
       return;
     }
+    setLoginBusy(true, "Checking PIN…");
     try {
       const data = await adminPostRaw({ action: "adminLogin", adminPin: pin });
       if (data.status === "ok") {
@@ -347,10 +364,13 @@
       }
     } catch (e) {
       openLoginScreen("admin", "Could not reach the server.");
+    } finally {
+      setLoginBusy(false);
     }
   }
 
   function handleKeypad(key) {
+    if (loginBusy) return; // guard against double-tap while a login request is in flight
     els.loginError.classList.add("hidden");
     const len = CONFIG.PIN_LENGTH || 4;
     if (key === "back") {
@@ -448,6 +468,42 @@
       els.achievementBadge.classList.add("hidden");
     }
     renderShiftUsage();
+  }
+
+  // ---------- Busy-state helper (Phase 0.1 — visible feedback on every async admin action) ----------
+
+  async function withBusy(btn, busyLabel, fn) {
+    if (!btn) return fn();
+    const original = btn.textContent;
+    const wasDisabled = btn.disabled;
+    btn.disabled = true;
+    btn.textContent = busyLabel;
+    try {
+      return await fn();
+    } finally {
+      btn.disabled = wasDisabled;
+      btn.textContent = original;
+    }
+  }
+
+  // ---------- Shift clock-window validation (mirrors Code.gs isTimeWithinShiftWindow) ----------
+  // Rejects an End time that falls outside the configured shift's clock window —
+  // e.g. a Night-shift end time typed as 11:00 (daytime) instead of a real wrap-around time.
+
+  function isTimeWithinShiftWindow(shift, timeStr, shiftTimes) {
+    if (!timeStr) return true; // let the "required field" check catch blanks
+    const st = shiftTimes || {};
+    const isNight = String(shift).trim().toLowerCase() === "night";
+    const startStr = (isNight ? (st.Night && st.Night.start) : (st.Day && st.Day.start)) || (isNight ? "17:30" : "09:00");
+    const endStr = (isNight ? (st.Night && st.Night.end) : (st.Day && st.Day.end)) || (isNight ? "09:00" : "17:30");
+    const t = parseHHMM(timeStr);
+    const start = parseHHMM(startStr);
+    let end = parseHHMM(endStr);
+    if (end <= start) {
+      // wraps midnight (typical night shift): valid window is [start,1440) U [0,end]
+      return t >= start || t <= end;
+    }
+    return t >= start && t <= end;
   }
 
   // ---------- Admin / Settings ----------
@@ -902,16 +958,18 @@
       showToast("Fill in name, PIN, and department");
       return;
     }
-    const data = editingSupervisorPin
-      ? await adminPost("updateSupervisor", { originalPin: editingSupervisorPin, name, pin, department: dept })
-      : await adminPost("addSupervisor", { name, pin, department: dept });
-    if (data.status === "ok") {
-      showToast(editingSupervisorPin ? "Supervisor updated" : "Supervisor added");
-      resetSupervisorForm();
-      refreshSupervisorsList();
-    } else {
-      showToast(data.message || "Could not save");
-    }
+    await withBusy(els.supSaveBtn, "Saving…", async () => {
+      const data = editingSupervisorPin
+        ? await adminPost("updateSupervisor", { originalPin: editingSupervisorPin, name, pin, department: dept })
+        : await adminPost("addSupervisor", { name, pin, department: dept });
+      if (data.status === "ok") {
+        showToast(editingSupervisorPin ? "Supervisor updated" : "Supervisor added");
+        resetSupervisorForm();
+        refreshSupervisorsList();
+      } else {
+        showToast(data.message || "Could not save");
+      }
+    });
   });
 
   els.supCancelBtn.addEventListener("click", resetSupervisorForm);
@@ -926,16 +984,18 @@
       showToast("Pick a department and enter a machine name");
       return;
     }
-    const data = await adminPost("addMachine", { department: dept, machine, capacityPerMin: capacity });
-    if (data.status === "ok") {
-      showToast("Machine added");
-      els.newMachineInput.value = "";
-      els.newMachineCapacity.value = "";
-      await loadServerConfig(true);
-      refreshMachinesList();
-    } else {
-      showToast(data.message || "Could not add");
-    }
+    await withBusy(els.addMachineBtn, "Adding…", async () => {
+      const data = await adminPost("addMachine", { department: dept, machine, capacityPerMin: capacity });
+      if (data.status === "ok") {
+        showToast("Machine added");
+        els.newMachineInput.value = "";
+        els.newMachineCapacity.value = "";
+        await loadServerConfig(true);
+        refreshMachinesList();
+      } else {
+        showToast(data.message || "Could not add");
+      }
+    });
   });
 
   els.addDeptBtn.addEventListener("click", async () => {
@@ -946,54 +1006,60 @@
       showToast("Enter a department name and its first machine");
       return;
     }
-    const data = await adminPost("addMachine", { department: dept, machine, capacityPerMin: capacity });
-    if (data.status === "ok") {
-      showToast("Department created");
-      els.newDeptName.value = "";
-      els.newDeptMachine.value = "";
-      els.newDeptMachineCapacity.value = "";
-      await loadServerConfig(true);
-      populateMachDeptSelect();
-      populateSupDeptSelect();
-      els.machDeptSelect.value = dept;
-      refreshMachinesList();
-    } else {
-      showToast(data.message || "Could not create department");
-    }
+    await withBusy(els.addDeptBtn, "Creating…", async () => {
+      const data = await adminPost("addMachine", { department: dept, machine, capacityPerMin: capacity });
+      if (data.status === "ok") {
+        showToast("Department created");
+        els.newDeptName.value = "";
+        els.newDeptMachine.value = "";
+        els.newDeptMachineCapacity.value = "";
+        await loadServerConfig(true);
+        populateMachDeptSelect();
+        populateSupDeptSelect();
+        els.machDeptSelect.value = dept;
+        refreshMachinesList();
+      } else {
+        showToast(data.message || "Could not create department");
+      }
+    });
   });
 
   els.addReasonBtn.addEventListener("click", async () => {
     const reason = els.newReasonInput.value.trim();
     if (!reason) return;
-    const data = await adminPost("addReason", { reason });
-    if (data.status === "ok") {
-      showToast("Reason added");
-      els.newReasonInput.value = "";
-      await loadServerConfig(true);
-      refreshReasonsList();
-      populateStaticFields();
-    } else {
-      showToast(data.message || "Could not add");
-    }
+    await withBusy(els.addReasonBtn, "Adding…", async () => {
+      const data = await adminPost("addReason", { reason });
+      if (data.status === "ok") {
+        showToast("Reason added");
+        els.newReasonInput.value = "";
+        await loadServerConfig(true);
+        refreshReasonsList();
+        populateStaticFields();
+      } else {
+        showToast(data.message || "Could not add");
+      }
+    });
   });
 
   els.saveGeneralBtn.addEventListener("click", async () => {
-    const data = await adminPost("updateSettings", {
-      sessionTimeoutHours: els.timeoutInput.value,
-      maxScheduleSlots: els.slotsInput.value,
-      dayShiftStart: els.dayShiftStartInput.value,
-      dayShiftEnd: els.dayShiftEndInput.value,
-      nightShiftStart: els.nightShiftStartInput.value,
-      nightShiftEnd: els.nightShiftEndInput.value,
+    await withBusy(els.saveGeneralBtn, "Saving…", async () => {
+      const data = await adminPost("updateSettings", {
+        sessionTimeoutHours: els.timeoutInput.value,
+        maxScheduleSlots: els.slotsInput.value,
+        dayShiftStart: els.dayShiftStartInput.value,
+        dayShiftEnd: els.dayShiftEndInput.value,
+        nightShiftStart: els.nightShiftStartInput.value,
+        nightShiftEnd: els.nightShiftEndInput.value,
+      });
+      if (data.status === "ok") {
+        showToast("Settings saved");
+        await loadServerConfig(true);
+        populateStaticFields();
+        refreshShiftUsage();
+      } else {
+        showToast(data.message || "Could not save");
+      }
     });
-    if (data.status === "ok") {
-      showToast("Settings saved");
-      await loadServerConfig(true);
-      populateStaticFields();
-      refreshShiftUsage();
-    } else {
-      showToast(data.message || "Could not save");
-    }
   });
 
   els.saveAdminPinBtn.addEventListener("click", async () => {
@@ -1003,14 +1069,16 @@
       showToast("Admin PIN must be " + len + " digits");
       return;
     }
-    const data = await adminPost("updateSettings", { newAdminPin: newPin });
-    if (data.status === "ok") {
-      adminPin = newPin;
-      showToast("Admin PIN updated");
-      els.newAdminPinInput.value = "";
-    } else {
-      showToast(data.message || "Could not update");
-    }
+    await withBusy(els.saveAdminPinBtn, "Updating…", async () => {
+      const data = await adminPost("updateSettings", { newAdminPin: newPin });
+      if (data.status === "ok") {
+        adminPin = newPin;
+        showToast("Admin PIN updated");
+        els.newAdminPinInput.value = "";
+      } else {
+        showToast(data.message || "Could not update");
+      }
+    });
   });
 
   // ---------- Event wiring: entry form ----------
@@ -1039,9 +1107,12 @@
   });
   window.addEventListener("offline", updateNetPill);
 
+  let submitBusy = false;
+
   els.form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    if (submitBusy) return; // double-submit guard
     if (!session) {
       showToast("Please log in first");
       return;
@@ -1058,6 +1129,10 @@
     const thisMin = computeDurationMinutes(els.changeStart.value, els.changeEnd.value);
     if (thisMin <= 0) {
       showToast("Enter a valid start and end time for this schedule");
+      return;
+    }
+    if (!isTimeWithinShiftWindow(els.shift.value, els.changeEnd.value, SERVER_CONFIG && SERVER_CONFIG.shiftTimes)) {
+      showToast("End time must fall within the " + els.shift.value + " shift window — check it hasn't crossed into the next shift.");
       return;
     }
     if (shiftUsage) {
@@ -1088,26 +1163,26 @@
       supervisorName: session.name,
     };
 
-    saveLast();
+    submitBusy = true;
+    els.submitBtn.disabled = true;
+    try {
+      saveLast();
 
-    if (navigator.onLine && CONFIG.APPS_SCRIPT_URL) {
-      const result = await sendToServer(entry);
-      if (result.rejected) {
-        showToast(result.message || "Could not save — adjust the entry and try again");
-        return; // keep the form as-is so they can fix it
-      }
-      if (result.ok) {
-        showToast("Entry saved");
-        resetEntryFields();
-        refreshShiftUsage();
-        return;
-      }
+      // E10: save is always local-first and instant. We never await the server
+      // in the critical path — queue now, show success now, sync in the background.
+      enqueue(entry);
+      showToast(CONFIG.APPS_SCRIPT_URL ? "Entry saved — syncing…" : "Saved locally (no server configured)");
+      resetEntryFields();
+      refreshShiftUsage();
+
+      // Fire-and-forget background sync attempt. If it fails (offline, or the
+      // server actively rejects it), the periodic flushQueue() retry/report
+      // loop already handles it — nothing further to do here.
+      flushQueue();
+    } finally {
+      submitBusy = false;
+      els.submitBtn.disabled = false;
     }
-
-    // Network unreachable (not an active rejection) — queue for later.
-    enqueue(entry);
-    showToast(CONFIG.APPS_SCRIPT_URL ? "Saved offline — will sync" : "Saved locally (no server configured)");
-    resetEntryFields();
   });
 
   // ---------- Init ----------
