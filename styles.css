@@ -84,6 +84,26 @@ html, body {
 .pill-online { background: rgba(79,174,110,0.15); color: var(--green); }
 .pill-offline { background: rgba(217,92,92,0.15); color: var(--red); }
 .pill-pending { background: rgba(226,166,59,0.18); color: var(--amber); }
+.pill-needsfix { background: rgba(217,92,92,0.18); color: var(--red); }
+
+.recent-entry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+.recent-entry-row:last-child { border-bottom: none; }
+.recent-entry-title { font-weight: 700; }
+.recent-entry-sub { color: var(--text-dim); font-size: 13px; margin-top: 2px; }
+.recent-entry-flagged {
+  background: rgba(217,92,92,0.08);
+  margin: 0 -16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+.recent-entry-flagged .recent-entry-sub { color: var(--red); }
 
 main {
   max-width: 640px;

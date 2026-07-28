@@ -2,498 +2,528 @@
   "departments": {
     "Rolling": [
       {
-        "machine": "TH-01",
-        "capacityPerMin": 0
+        "machineId": "RL-TH01",
+        "displayName": "TH-01"
       },
       {
-        "machine": "TH-02",
-        "capacityPerMin": 0
+        "machineId": "RL-TH02",
+        "displayName": "TH-02"
       },
       {
-        "machine": "TH-03",
-        "capacityPerMin": 0
+        "machineId": "RL-TH03",
+        "displayName": "TH-03"
       },
       {
-        "machine": "TH-04",
-        "capacityPerMin": 0
+        "machineId": "RL-TH04",
+        "displayName": "TH-04"
       },
       {
-        "machine": "TH-05",
-        "capacityPerMin": 0
+        "machineId": "RL-TH05",
+        "displayName": "TH-05"
       },
       {
-        "machine": "TH-06",
-        "capacityPerMin": 0
+        "machineId": "RL-TH06",
+        "displayName": "TH-06"
       },
       {
-        "machine": "TH-07",
-        "capacityPerMin": 0
+        "machineId": "RL-TH07",
+        "displayName": "TH-07"
       },
       {
-        "machine": "TH-08",
-        "capacityPerMin": 0
+        "machineId": "RL-TH08",
+        "displayName": "TH-08"
       },
       {
-        "machine": "TH-09",
-        "capacityPerMin": 0
+        "machineId": "RL-TH09",
+        "displayName": "TH-09"
       },
       {
-        "machine": "TH-10",
-        "capacityPerMin": 0
+        "machineId": "RL-TH10",
+        "displayName": "TH-10"
       },
       {
-        "machine": "TH-11",
-        "capacityPerMin": 0
+        "machineId": "RL-TH11",
+        "displayName": "TH-11"
       },
       {
-        "machine": "TH-12",
-        "capacityPerMin": 0
+        "machineId": "RL-TH12",
+        "displayName": "TH-12"
       },
       {
-        "machine": "TH-13",
-        "capacityPerMin": 0
+        "machineId": "RL-TH13",
+        "displayName": "TH-13"
       },
       {
-        "machine": "TH-14",
-        "capacityPerMin": 0
+        "machineId": "RL-TH14",
+        "displayName": "TH-14"
       },
       {
-        "machine": "TH-15",
-        "capacityPerMin": 0
+        "machineId": "RL-TH15",
+        "displayName": "TH-15"
       },
       {
-        "machine": "TH-16",
-        "capacityPerMin": 0
+        "machineId": "RL-TH16",
+        "displayName": "TH-16"
       },
       {
-        "machine": "TH-17",
-        "capacityPerMin": 0
+        "machineId": "RL-TH17",
+        "displayName": "TH-17"
       },
       {
-        "machine": "TH-18",
-        "capacityPerMin": 0
+        "machineId": "RL-TH18",
+        "displayName": "TH-18"
       },
       {
-        "machine": "TH-19",
-        "capacityPerMin": 0
+        "machineId": "RL-TH19",
+        "displayName": "TH-19"
       },
       {
-        "machine": "TH-20",
-        "capacityPerMin": 0
+        "machineId": "RL-TH20",
+        "displayName": "TH-20"
       },
       {
-        "machine": "TH-21",
-        "capacityPerMin": 0
+        "machineId": "RL-TH21",
+        "displayName": "TH-21"
       },
       {
-        "machine": "TH-22",
-        "capacityPerMin": 0
+        "machineId": "RL-TH22",
+        "displayName": "TH-22"
       },
       {
-        "machine": "TH-23",
-        "capacityPerMin": 0
+        "machineId": "RL-TH23",
+        "displayName": "TH-23"
       },
       {
-        "machine": "TH-24",
-        "capacityPerMin": 0
+        "machineId": "RL-TH24",
+        "displayName": "TH-24"
       },
       {
-        "machine": "TH-25",
-        "capacityPerMin": 0
+        "machineId": "RL-TH25",
+        "displayName": "TH-25"
       },
       {
-        "machine": "TH-26",
-        "capacityPerMin": 0
+        "machineId": "RL-TH26",
+        "displayName": "TH-26"
       },
       {
-        "machine": "TH-27",
-        "capacityPerMin": 0
+        "machineId": "RL-TH27",
+        "displayName": "TH-27"
       },
       {
-        "machine": "TH-28",
-        "capacityPerMin": 0
+        "machineId": "RL-TH28",
+        "displayName": "TH-28"
       },
       {
-        "machine": "TH-29",
-        "capacityPerMin": 0
+        "machineId": "RL-TH29",
+        "displayName": "TH-29"
       },
       {
-        "machine": "TH-30",
-        "capacityPerMin": 0
+        "machineId": "RL-TH30",
+        "displayName": "TH-30"
       },
       {
-        "machine": "TH-31",
-        "capacityPerMin": 0
+        "machineId": "RL-TH31",
+        "displayName": "TH-31"
       },
       {
-        "machine": "TH-32",
-        "capacityPerMin": 0
+        "machineId": "RL-TH32",
+        "displayName": "TH-32"
       }
     ],
     "Forging-1": [
       {
-        "machine": "BH-01",
-        "capacityPerMin": 0
+        "machineId": "F1-BH01",
+        "displayName": "BH-01"
       },
       {
-        "machine": "BH-02",
-        "capacityPerMin": 0
+        "machineId": "F1-BH02",
+        "displayName": "BH-02"
       },
       {
-        "machine": "BH-03",
-        "capacityPerMin": 0
+        "machineId": "F1-BH03",
+        "displayName": "BH-03"
       },
       {
-        "machine": "BH-04",
-        "capacityPerMin": 0
+        "machineId": "F1-BH04",
+        "displayName": "BH-04"
       },
       {
-        "machine": "BH-05",
-        "capacityPerMin": 0
+        "machineId": "F1-BH05",
+        "displayName": "BH-05"
       },
       {
-        "machine": "BH-06",
-        "capacityPerMin": 0
+        "machineId": "F1-BH06",
+        "displayName": "BH-06"
       },
       {
-        "machine": "BH-07",
-        "capacityPerMin": 0
+        "machineId": "F1-BH07",
+        "displayName": "BH-07"
       },
       {
-        "machine": "BH-08",
-        "capacityPerMin": 0
+        "machineId": "F1-BH08",
+        "displayName": "BH-08"
       },
       {
-        "machine": "BH-09",
-        "capacityPerMin": 0
+        "machineId": "F1-BH09",
+        "displayName": "BH-09"
       },
       {
-        "machine": "BH-10",
-        "capacityPerMin": 0
+        "machineId": "F1-BH10",
+        "displayName": "BH-10"
       },
       {
-        "machine": "BH-11",
-        "capacityPerMin": 0
+        "machineId": "F1-BH11",
+        "displayName": "BH-11"
       },
       {
-        "machine": "BH-12",
-        "capacityPerMin": 0
+        "machineId": "F1-BH12",
+        "displayName": "BH-12"
       },
       {
-        "machine": "BH-13",
-        "capacityPerMin": 0
+        "machineId": "F1-BH13",
+        "displayName": "BH-13"
       },
       {
-        "machine": "BH-14",
-        "capacityPerMin": 0
+        "machineId": "F1-BH14",
+        "displayName": "BH-14"
       },
       {
-        "machine": "BH-15",
-        "capacityPerMin": 0
+        "machineId": "F1-BH15",
+        "displayName": "BH-15"
       },
       {
-        "machine": "BH-16",
-        "capacityPerMin": 0
+        "machineId": "F1-BH16",
+        "displayName": "BH-16"
       },
       {
-        "machine": "BH-17",
-        "capacityPerMin": 0
+        "machineId": "F1-BH17",
+        "displayName": "BH-17"
       },
       {
-        "machine": "BH-18",
-        "capacityPerMin": 0
+        "machineId": "F1-BH18",
+        "displayName": "BH-18"
       }
     ],
     "Forging-2": [
       {
-        "machine": "H-01",
-        "capacityPerMin": 0
+        "machineId": "F2-H01",
+        "displayName": "H-01"
       },
       {
-        "machine": "H-02",
-        "capacityPerMin": 0
+        "machineId": "F2-H02",
+        "displayName": "H-02"
       },
       {
-        "machine": "H-03",
-        "capacityPerMin": 0
+        "machineId": "F2-H03",
+        "displayName": "H-03"
       },
       {
-        "machine": "H-04",
-        "capacityPerMin": 0
+        "machineId": "F2-H04",
+        "displayName": "H-04"
       },
       {
-        "machine": "H-05",
-        "capacityPerMin": 0
+        "machineId": "F2-H05",
+        "displayName": "H-05"
       },
       {
-        "machine": "H-06",
-        "capacityPerMin": 0
+        "machineId": "F2-H07",
+        "displayName": "H-07"
       },
       {
-        "machine": "H-07",
-        "capacityPerMin": 0
+        "machineId": "F2-H08",
+        "displayName": "H-08"
       },
       {
-        "machine": "H-08",
-        "capacityPerMin": 0
+        "machineId": "F2-H09",
+        "displayName": "H-09"
       },
       {
-        "machine": "H-09",
-        "capacityPerMin": 0
+        "machineId": "F2-H10",
+        "displayName": "H-10"
       },
       {
-        "machine": "H-10",
-        "capacityPerMin": 0
+        "machineId": "F2-H11",
+        "displayName": "H-11"
       },
       {
-        "machine": "H-11",
-        "capacityPerMin": 0
+        "machineId": "F2-H12",
+        "displayName": "H-12"
       },
       {
-        "machine": "H-12",
-        "capacityPerMin": 0
+        "machineId": "F2-H13",
+        "displayName": "H-13"
       },
       {
-        "machine": "H-13",
-        "capacityPerMin": 0
+        "machineId": "F2-H14",
+        "displayName": "H-14"
       },
       {
-        "machine": "H-14",
-        "capacityPerMin": 0
+        "machineId": "F2-H15",
+        "displayName": "H-15"
       },
       {
-        "machine": "H-15",
-        "capacityPerMin": 0
+        "machineId": "F2-H16",
+        "displayName": "H-16"
       },
       {
-        "machine": "H-16",
-        "capacityPerMin": 0
+        "machineId": "F2-H17",
+        "displayName": "H-17"
+      }
+    ],
+    "Forging-2 TM": [
+      {
+        "machineId": "TM-TM01",
+        "displayName": "TM-01"
       },
       {
-        "machine": "H-17",
-        "capacityPerMin": 0
+        "machineId": "TM-TM02",
+        "displayName": "TM-02"
+      },
+      {
+        "machineId": "TM-TM03",
+        "displayName": "TM-03"
+      },
+      {
+        "machineId": "TM-TM04",
+        "displayName": "TM-04"
+      },
+      {
+        "machineId": "TM-TM05",
+        "displayName": "TM-05"
+      },
+      {
+        "machineId": "TM-H06",
+        "displayName": "H-06"
       }
     ],
     "Forging-3": [
       {
-        "machine": "B-01",
-        "capacityPerMin": 0
+        "machineId": "F3-B01",
+        "displayName": "B-01"
       },
       {
-        "machine": "B-02",
-        "capacityPerMin": 0
+        "machineId": "F3-B02",
+        "displayName": "B-02"
       },
       {
-        "machine": "B-03",
-        "capacityPerMin": 0
+        "machineId": "F3-B03",
+        "displayName": "B-03"
       },
       {
-        "machine": "B-04",
-        "capacityPerMin": 0
+        "machineId": "F3-B04",
+        "displayName": "B-04"
       },
       {
-        "machine": "B-05",
-        "capacityPerMin": 0
+        "machineId": "F3-B05",
+        "displayName": "B-05"
       },
       {
-        "machine": "B-06",
-        "capacityPerMin": 0
+        "machineId": "F3-B06",
+        "displayName": "B-06"
       },
       {
-        "machine": "B-07",
-        "capacityPerMin": 0
+        "machineId": "F3-B07",
+        "displayName": "B-07"
       },
       {
-        "machine": "B-08",
-        "capacityPerMin": 0
+        "machineId": "F3-B08",
+        "displayName": "B-08"
       },
       {
-        "machine": "B-09",
-        "capacityPerMin": 0
+        "machineId": "F3-B09",
+        "displayName": "B-09"
       },
       {
-        "machine": "B-10",
-        "capacityPerMin": 0
+        "machineId": "F3-B10",
+        "displayName": "B-10"
       },
       {
-        "machine": "B-11",
-        "capacityPerMin": 0
+        "machineId": "F3-B11",
+        "displayName": "B-11"
       },
       {
-        "machine": "B-12",
-        "capacityPerMin": 0
+        "machineId": "F3-B12",
+        "displayName": "B-12"
       },
       {
-        "machine": "B-13",
-        "capacityPerMin": 0
+        "machineId": "F3-B13",
+        "displayName": "B-13"
       },
       {
-        "machine": "B-14",
-        "capacityPerMin": 0
+        "machineId": "F3-B14",
+        "displayName": "B-14"
       }
     ],
     "Machining": [
       {
-        "machine": "SH-01",
-        "capacityPerMin": 0
+        "machineId": "MC-SH01",
+        "displayName": "SH-01"
       },
       {
-        "machine": "SH-02",
-        "capacityPerMin": 0
+        "machineId": "MC-SH02",
+        "displayName": "SH-02"
       },
       {
-        "machine": "SH-03",
-        "capacityPerMin": 0
+        "machineId": "MC-SH03",
+        "displayName": "SH-03"
       },
       {
-        "machine": "SH-04",
-        "capacityPerMin": 0
+        "machineId": "MC-SH04",
+        "displayName": "SH-04"
       },
       {
-        "machine": "SH-05",
-        "capacityPerMin": 0
+        "machineId": "MC-SH05",
+        "displayName": "SH-05"
       },
       {
-        "machine": "SH-06",
-        "capacityPerMin": 0
+        "machineId": "MC-SH06",
+        "displayName": "SH-06"
       },
       {
-        "machine": "SH-07",
-        "capacityPerMin": 0
+        "machineId": "MC-SH07",
+        "displayName": "SH-07"
       },
       {
-        "machine": "TP-01",
-        "capacityPerMin": 0
+        "machineId": "MC-TP01",
+        "displayName": "TP-01"
       },
       {
-        "machine": "TP-02",
-        "capacityPerMin": 0
+        "machineId": "MC-TP02",
+        "displayName": "TP-02"
       },
       {
-        "machine": "TP-03",
-        "capacityPerMin": 0
+        "machineId": "MC-TP03",
+        "displayName": "TP-03"
       },
       {
-        "machine": "TP-04",
-        "capacityPerMin": 0
+        "machineId": "MC-TP04",
+        "displayName": "TP-04"
       },
       {
-        "machine": "CNC-01",
-        "capacityPerMin": 0
+        "machineId": "MC-CNC01",
+        "displayName": "CNC-01"
       },
       {
-        "machine": "CNC-02",
-        "capacityPerMin": 0
+        "machineId": "MC-CNC02",
+        "displayName": "CNC-02"
       },
       {
-        "machine": "CNC-03",
-        "capacityPerMin": 0
+        "machineId": "MC-CNC03",
+        "displayName": "CNC-03"
       },
       {
-        "machine": "CNC-04",
-        "capacityPerMin": 0
+        "machineId": "MC-CNC04",
+        "displayName": "CNC-04"
       },
       {
-        "machine": "HAL-01",
-        "capacityPerMin": 0
+        "machineId": "MC-HAL01",
+        "displayName": "HAL-01"
       },
       {
-        "machine": "TR-01",
-        "capacityPerMin": 0
+        "machineId": "MC-TR01",
+        "displayName": "TR-01"
       },
       {
-        "machine": "TR-02",
-        "capacityPerMin": 0
+        "machineId": "MC-TR02",
+        "displayName": "TR-02"
       },
       {
-        "machine": "TR-03",
-        "capacityPerMin": 0
+        "machineId": "MC-TR03",
+        "displayName": "TR-03"
       },
       {
-        "machine": "TR-04",
-        "capacityPerMin": 0
+        "machineId": "MC-TR04",
+        "displayName": "TR-04"
       },
       {
-        "machine": "TR-05",
-        "capacityPerMin": 0
+        "machineId": "MC-TR05",
+        "displayName": "TR-05"
       },
       {
-        "machine": "TR-06",
-        "capacityPerMin": 0
+        "machineId": "MC-TR06",
+        "displayName": "TR-06"
       },
       {
-        "machine": "TR-07",
-        "capacityPerMin": 0
+        "machineId": "MC-TR07",
+        "displayName": "TR-07"
       },
       {
-        "machine": "TR-08",
-        "capacityPerMin": 0
+        "machineId": "MC-TR08",
+        "displayName": "TR-08"
       },
       {
-        "machine": "CNC: SH-01",
-        "capacityPerMin": 0
+        "machineId": "MC-CNCSH01",
+        "displayName": "CNC: SH-01"
       },
       {
-        "machine": "CNC: SH-02",
-        "capacityPerMin": 0
+        "machineId": "MC-CNCSH02",
+        "displayName": "CNC: SH-02"
       },
       {
-        "machine": "CNC: SH-03",
-        "capacityPerMin": 0
+        "machineId": "MC-CNCSH03",
+        "displayName": "CNC: SH-03"
       },
       {
-        "machine": "AD-01",
-        "capacityPerMin": 0
+        "machineId": "MC-AD01",
+        "displayName": "AD-01"
       },
       {
-        "machine": "AD-02",
-        "capacityPerMin": 0
+        "machineId": "MC-AD02",
+        "displayName": "AD-02"
       },
       {
-        "machine": "AD-03",
-        "capacityPerMin": 0
+        "machineId": "MC-AD03",
+        "displayName": "AD-03"
       },
       {
-        "machine": "AD-04",
-        "capacityPerMin": 0
+        "machineId": "MC-AD04",
+        "displayName": "AD-04"
       },
       {
-        "machine": "DL-01",
-        "capacityPerMin": 0
+        "machineId": "MC-DL01",
+        "displayName": "DL-01"
       },
       {
-        "machine": "DL-02",
-        "capacityPerMin": 0
+        "machineId": "MC-DL02",
+        "displayName": "DL-02"
       },
       {
-        "machine": "ADM-01",
-        "capacityPerMin": 0
+        "machineId": "MC-ADM01",
+        "displayName": "ADM-01"
       },
       {
-        "machine": "GR-02",
-        "capacityPerMin": 0
+        "machineId": "MC-GR02",
+        "displayName": "GR-02"
       },
       {
-        "machine": "Gr-03",
-        "capacityPerMin": 0
+        "machineId": "MC-GR03",
+        "displayName": "Gr-03"
       },
       {
-        "machine": "HAG-01",
-        "capacityPerMin": 0
+        "machineId": "MC-HAG01",
+        "displayName": "HAG-01"
       },
       {
-        "machine": "EPG-01",
-        "capacityPerMin": 0
+        "machineId": "MC-EPG01",
+        "displayName": "EPG-01"
       },
       {
-        "machine": "EPG-02",
-        "capacityPerMin": 0
+        "machineId": "MC-EPG02",
+        "displayName": "EPG-02"
       },
       {
-        "machine": "EPG-03",
-        "capacityPerMin": 0
+        "machineId": "MC-EPG03",
+        "displayName": "EPG-03"
       }
     ]
+  },
+  "slotsAllowed": {
+    "Rolling": 3,
+    "Forging-1": 2,
+    "Forging-2": 2,
+    "Forging-2 TM": 2,
+    "Forging-3": 2,
+    "Machining": 2
   },
   "reasons": [
     "1. Raw Material Not available",
@@ -509,7 +539,6 @@
     "Other"
   ],
   "sessionTimeoutHours": 12,
-  "maxScheduleSlots": 4,
   "shiftTimes": {
     "Day": {
       "start": "09:00",

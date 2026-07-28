@@ -6,16 +6,20 @@
   const ITEMS_CACHE_KEY = "prodentry_items_cache_v1";
   const SESSION_KEY = "prodentry_session_v1";
   const CONFIG_CACHE_KEY = "prodentry_config_cache_v1";
+  const RECENT_KEY = "prodentry_recent_v1";
+  const RECENT_MAX = 15;
 
   let ITEMS = [];
-  let SERVER_CONFIG = null; // { departments: {dept: [{machine, capacityPerMin}]}, reasons, sessionTimeoutHours, maxScheduleSlots, shiftTimes }
+  let SERVER_CONFIG = null; // { departments: {dept: [{machineId, displayName}]}, slotsAllowed: {dept: n}, reasons, sessionTimeoutHours, shiftTimes }
   let selectedItem = null;
   let session = null; // { name, department, loginAt }
   let currentPin = "";
   let loginMode = "supervisor"; // "supervisor" | "admin"
   let adminPin = null; // in-memory only, cleared when Settings closes
   let editingSupervisorPin = null;
-  let shiftUsage = null; // latest { usedMinutes, totalMinutes, capacityPerMin, ... } for current machine+shift+today
+  let editingEntryId = null; // set when editing a row loaded from Recent Entries
+  let editingQtyType = null; // "Manual" | "Auto" | null -- which Rolling row editingEntryId belongs to
+  let shiftUsage = null; // latest { usedMinutes, totalMinutes, capacityPerMin, ... } for current machine+shift+item+today
 
   const $ = (id) => document.getElementById(id);
 
@@ -38,16 +42,25 @@
     capacityWarning: $("capacityWarning"),
     scheduledPreview: $("scheduledPreview"),
     scheduledPreviewQty: $("scheduledPreviewQty"),
+    producedQtyGroup: $("producedQtyGroup"),
     producedQty: $("producedQty"),
+    rollingQtyGroup: $("rollingQtyGroup"),
+    producedQtyManual: $("producedQtyManual"),
+    producedQtyAuto: $("producedQtyAuto"),
+    manualCapRateField: $("manualCapRateField"),
+    manualCapRate: $("manualCapRate"),
     achievementBadge: $("achievementBadge"),
     reason: $("reason"),
     remarks: $("remarks"),
     operatorName: $("operatorName"),
     form: $("entryForm"),
     submitBtn: $("submitBtn"),
+    cancelEditBtn: $("cancelEditBtn"),
+    recentEntriesList: $("recentEntriesList"),
     toast: $("toast"),
     netPill: $("netPill"),
     pendingPill: $("pendingPill"),
+    needsFixPill: $("needsFixPill"),
     appShell: $("appShell"),
     loginScreen: $("loginScreen"),
     loginTitle: $("loginTitle"),
@@ -84,7 +97,6 @@
     nightShiftStartInput: $("nightShiftStartInput"),
     nightShiftEndInput: $("nightShiftEndInput"),
     timeoutInput: $("timeoutInput"),
-    slotsInput: $("slotsInput"),
     saveGeneralBtn: $("saveGeneralBtn"),
     newAdminPinInput: $("newAdminPinInput"),
     saveAdminPinBtn: $("saveAdminPinBtn"),
@@ -172,18 +184,13 @@
         const res = await fetch("bootstrap-config.json");
         SERVER_CONFIG = await res.json();
       } catch (e) {
-        SERVER_CONFIG = { departments: {}, reasons: [], sessionTimeoutHours: 12, maxScheduleSlots: 4, shiftTimes: {} };
+        SERVER_CONFIG = { departments: {}, slotsAllowed: {}, reasons: [], sessionTimeoutHours: 12, shiftTimes: {} };
       }
     }
   }
 
   function populateStaticFields() {
     fillSelect(els.shift, ["Day", "Night"], null);
-
-    const slots = [];
-    const maxSlots = (SERVER_CONFIG && SERVER_CONFIG.maxScheduleSlots) || 4;
-    for (let i = 1; i <= maxSlots; i++) slots.push(String(i));
-    fillSelect(els.scheduleSlot, slots, null);
 
     els.reason.innerHTML = "";
     const blank = document.createElement("option");
@@ -198,19 +205,60 @@
     });
   }
 
+  // Schedule slots are per-department now (Slots Allowed on the Machines sheet),
+  // not a single global count -- Rolling gets 3, everyone else gets 2.
+  function refreshScheduleSlots(dept) {
+    const slots = [];
+    const maxSlots = (SERVER_CONFIG && SERVER_CONFIG.slotsAllowed && SERVER_CONFIG.slotsAllowed[dept]) || 2;
+    for (let i = 1; i <= maxSlots; i++) slots.push(String(i));
+    fillSelect(els.scheduleSlot, slots, null);
+  }
+
   function getDeptMachines(dept) {
     return (SERVER_CONFIG.departments && SERVER_CONFIG.departments[dept]) || [];
   }
 
+  // Dropdown value is now the stable Machine ID; the label is the display name
+  // supervisors actually recognize.
   function populateMachinesForDept(dept) {
-    const names = getDeptMachines(dept).map((m) => m.machine);
-    fillSelect(els.machine, names, "Select machine");
+    els.machine.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select machine";
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    els.machine.appendChild(placeholder);
+    getDeptMachines(dept).forEach((m) => {
+      const o = document.createElement("option");
+      o.value = m.machineId;
+      o.textContent = m.displayName;
+      els.machine.appendChild(o);
+    });
   }
 
-  function getSelectedMachineCapacity() {
-    if (!session) return 0;
-    const found = getDeptMachines(session.department).find((m) => m.machine === els.machine.value);
-    return found ? Number(found.capacityPerMin) || 0 : 0;
+  function machineDisplayName(machineId) {
+    if (!session) return "";
+    const found = getDeptMachines(session.department).find((m) => m.machineId === machineId);
+    return found ? found.displayName : "";
+  }
+
+  // Rolling captures Manual and Auto quantities separately (E7); every other
+  // department uses the single Produced Qty field.
+  function updateQtyFieldsForDept(dept) {
+    const isRolling = dept === "Rolling";
+    els.producedQtyGroup.classList.toggle("hidden", isRolling);
+    els.rollingQtyGroup.classList.toggle("hidden", !isRolling);
+    els.producedQty.required = !isRolling;
+    if (!isRolling) els.manualCapRateField.classList.add("hidden");
+  }
+
+  function currentProducedQty() {
+    if (session && session.department === "Rolling") {
+      const manual = parseFloat(els.producedQtyManual.value) || 0;
+      const auto = parseFloat(els.producedQtyAuto.value) || 0;
+      return manual + auto;
+    }
+    return parseFloat(els.producedQty.value) || 0;
   }
 
   // ---------- Remember last machine/shift (speeds up repeat entries) ----------
@@ -270,7 +318,10 @@
     els.sessionBar.classList.remove("hidden");
     els.sessionInfo.textContent = s.name + " · " + s.department;
     populateMachinesForDept(s.department);
+    refreshScheduleSlots(s.department);
+    updateQtyFieldsForDept(s.department);
     applyLast();
+    renderRecentEntries();
     refreshShiftUsage();
   }
 
@@ -301,19 +352,6 @@
     }
   }
 
-  let loginBusy = false;
-
-  function setLoginBusy(busy, label) {
-    loginBusy = busy;
-    els.keypad.classList.toggle("keypad-busy", busy);
-    if (busy) {
-      els.loginTitle.dataset.prevText = els.loginTitle.textContent;
-      els.loginTitle.textContent = label || "Checking…";
-    } else if (els.loginTitle.dataset.prevText) {
-      delete els.loginTitle.dataset.prevText;
-    }
-  }
-
   async function attemptLogin(pin) {
     if (!CONFIG.APPS_SCRIPT_URL) {
       openLoginScreen("supervisor", "No server configured yet — set APPS_SCRIPT_URL in config.js.");
@@ -323,7 +361,6 @@
       openLoginScreen("supervisor", "Connect to the internet once to log in on this device.");
       return;
     }
-    setLoginBusy(true, "Checking PIN…");
     try {
       const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
         method: "POST",
@@ -339,8 +376,6 @@
       }
     } catch (e) {
       openLoginScreen("supervisor", "Could not reach the server. Check your connection and try again.");
-    } finally {
-      setLoginBusy(false);
     }
   }
 
@@ -353,7 +388,6 @@
       openLoginScreen("admin", "Connect to the internet to open Settings.");
       return;
     }
-    setLoginBusy(true, "Checking PIN…");
     try {
       const data = await adminPostRaw({ action: "adminLogin", adminPin: pin });
       if (data.status === "ok") {
@@ -364,13 +398,10 @@
       }
     } catch (e) {
       openLoginScreen("admin", "Could not reach the server.");
-    } finally {
-      setLoginBusy(false);
     }
   }
 
   function handleKeypad(key) {
-    if (loginBusy) return; // guard against double-tap while a login request is in flight
     els.loginError.classList.add("hidden");
     const len = CONFIG.PIN_LENGTH || 4;
     if (key === "back") {
@@ -397,16 +428,18 @@
   }
 
   // ---------- Shift usage (time-based capacity) ----------
+  // Rate resolution can depend on the selected item (Item Capacity Override),
+  // so usage is re-fetched on machine, shift, AND item changes.
 
-  async function fetchShiftUsage(dept, machine, shift) {
-    if (!CONFIG.APPS_SCRIPT_URL || !navigator.onLine || !dept || !machine || !shift) return null;
+  async function fetchShiftUsage(machineId, shift, itemCode) {
+    if (!CONFIG.APPS_SCRIPT_URL || !navigator.onLine || !machineId || !shift) return null;
     try {
       const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           action: "getShiftUsage", secretToken: CONFIG.SECRET_TOKEN,
-          department: dept, machine: machine, shift: shift, date: todayDateStr(),
+          machineId: machineId, shift: shift, itemCode: itemCode || "", date: todayDateStr(),
         }),
       });
       const data = await res.json();
@@ -421,7 +454,7 @@
       shiftUsage = null;
       return;
     }
-    shiftUsage = await fetchShiftUsage(session.department, els.machine.value, els.shift.value);
+    shiftUsage = await fetchShiftUsage(els.machine.value, els.shift.value, selectedItem ? selectedItem.code : "");
     renderShiftUsage();
   }
 
@@ -454,56 +487,41 @@
 
   function onEntryInputsChanged() {
     const thisMin = computeDurationMinutes(els.changeStart.value, els.changeEnd.value);
-    const capacity = getSelectedMachineCapacity();
+    const isRolling = session && session.department === "Rolling";
 
-    if (thisMin > 0) {
+    if (thisMin <= 0) {
+      els.scheduledPreview.classList.add("hidden");
+      els.capacityWarning.classList.add("hidden");
+      els.achievementBadge.classList.add("hidden");
+      renderShiftUsage();
+      return;
+    }
+
+    if (isRolling) {
+      const manualEntered = els.producedQtyManual.value !== "";
+      const autoEntered = els.producedQtyAuto.value !== "";
+      const manualRate = parseFloat(els.manualCapRate.value) || 0;
+      const autoRate = shiftUsage ? (shiftUsage.capacityPerMin || 0) : 0;
+      const manualScheduled = manualEntered ? Math.round(thisMin * manualRate) : 0;
+      const autoScheduled = autoEntered ? Math.round(thisMin * autoRate) : 0;
+      const totalScheduled = manualScheduled + autoScheduled;
+
+      els.capacityWarning.classList.toggle("hidden", !(autoEntered && !autoRate));
+      const parts = [];
+      if (manualEntered) parts.push("Manual " + manualScheduled);
+      if (autoEntered) parts.push("Auto " + autoScheduled);
+      els.scheduledPreviewQty.textContent = String(totalScheduled) + (parts.length ? " (" + parts.join(" · ") + ")" : "");
+      els.scheduledPreview.classList.remove("hidden");
+      updateAchievement(totalScheduled);
+    } else {
+      const capacity = shiftUsage ? (shiftUsage.capacityPerMin || 0) : 0;
       els.capacityWarning.classList.toggle("hidden", !!capacity);
       const scheduled = Math.round(thisMin * capacity);
       els.scheduledPreviewQty.textContent = String(scheduled);
       els.scheduledPreview.classList.remove("hidden");
       updateAchievement(scheduled);
-    } else {
-      els.scheduledPreview.classList.add("hidden");
-      els.capacityWarning.classList.add("hidden");
-      els.achievementBadge.classList.add("hidden");
     }
     renderShiftUsage();
-  }
-
-  // ---------- Busy-state helper (Phase 0.1 — visible feedback on every async admin action) ----------
-
-  async function withBusy(btn, busyLabel, fn) {
-    if (!btn) return fn();
-    const original = btn.textContent;
-    const wasDisabled = btn.disabled;
-    btn.disabled = true;
-    btn.textContent = busyLabel;
-    try {
-      return await fn();
-    } finally {
-      btn.disabled = wasDisabled;
-      btn.textContent = original;
-    }
-  }
-
-  // ---------- Shift clock-window validation (mirrors Code.gs isTimeWithinShiftWindow) ----------
-  // Rejects an End time that falls outside the configured shift's clock window —
-  // e.g. a Night-shift end time typed as 11:00 (daytime) instead of a real wrap-around time.
-
-  function isTimeWithinShiftWindow(shift, timeStr, shiftTimes) {
-    if (!timeStr) return true; // let the "required field" check catch blanks
-    const st = shiftTimes || {};
-    const isNight = String(shift).trim().toLowerCase() === "night";
-    const startStr = (isNight ? (st.Night && st.Night.start) : (st.Day && st.Day.start)) || (isNight ? "17:30" : "09:00");
-    const endStr = (isNight ? (st.Night && st.Night.end) : (st.Day && st.Day.end)) || (isNight ? "09:00" : "17:30");
-    const t = parseHHMM(timeStr);
-    const start = parseHHMM(startStr);
-    let end = parseHHMM(endStr);
-    if (end <= start) {
-      // wraps midnight (typical night shift): valid window is [start,1440) U [0,end]
-      return t >= start || t <= end;
-    }
-    return t >= start && t <= end;
   }
 
   // ---------- Admin / Settings ----------
@@ -616,9 +634,16 @@
     els.supCancelBtn.classList.add("hidden");
   }
 
-  function refreshMachinesList() {
+  // Admin needs the full machine row (base rate, overrides, IsActive) which the
+  // public config deliberately no longer carries -- fetched via listMachines.
+  async function refreshMachinesList() {
     const dept = els.machDeptSelect.value;
-    const machines = getDeptMachines(dept);
+    const data = await adminPost("listMachines", {});
+    if (data.status !== "ok") {
+      showToast(data.message || "Could not load machines");
+      return;
+    }
+    const machines = data.machines.filter((m) => m.department === dept);
     els.machinesList.innerHTML = "";
     if (!machines.length) {
       els.machinesList.innerHTML = '<div class="settings-empty">No machines in this department yet.</div>';
@@ -628,18 +653,18 @@
       const row = document.createElement("div");
       row.className = "settings-row";
       row.innerHTML =
-        '<div><div class="settings-row-title">' + escapeHtml(m.machine) + '</div>' +
-        '<div class="settings-row-sub">' + (m.capacityPerMin || 0) + ' / min</div></div>' +
+        '<div><div class="settings-row-title">' + escapeHtml(m.displayName) + (m.isActive ? "" : " (inactive)") + '</div>' +
+        '<div class="settings-row-sub">' + (m.baseRate || 0) + ' / min</div></div>' +
         '<div class="settings-row-actions">' +
-        '<button type="button" class="link-btn" data-editcap="' + escapeHtml(m.machine) + '">Edit capacity</button>' +
-        '<button type="button" class="remove-x" data-remove="' + escapeHtml(m.machine) + '" aria-label="Remove">×</button>' +
+        '<button type="button" class="link-btn" data-editcap="' + escapeHtml(m.machineId) + '">Edit rate</button>' +
+        '<button type="button" class="remove-x" data-remove="' + escapeHtml(m.machineId) + '" aria-label="Remove">×</button>' +
         '</div>';
       els.machinesList.appendChild(row);
     });
     els.machinesList.querySelectorAll("[data-remove]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         if (!confirm("Remove this machine?")) return;
-        const data = await adminPost("removeMachine", { department: dept, machine: btn.dataset.remove });
+        const data = await adminPost("removeMachine", { machineId: btn.dataset.remove });
         if (data.status === "ok") {
           showToast("Machine removed");
           await loadServerConfig(true);
@@ -651,17 +676,17 @@
     });
     els.machinesList.querySelectorAll("[data-editcap]").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        const current = machines.find((x) => x.machine === btn.dataset.editcap);
-        const newVal = prompt("New capacity per minute for " + btn.dataset.editcap + ":", current ? current.capacityPerMin : 0);
+        const current = machines.find((x) => x.machineId === btn.dataset.editcap);
+        const newVal = prompt("New base rate (pcs/min) for " + (current ? current.displayName : "") + ":", current ? current.baseRate : 0);
         if (newVal === null) return;
         const num = Number(newVal);
         if (isNaN(num) || num < 0) {
           showToast("Enter a valid number");
           return;
         }
-        const data = await adminPost("updateMachineCapacity", { department: dept, machine: btn.dataset.editcap, capacityPerMin: num });
+        const data = await adminPost("updateMachineCapacity", { machineId: btn.dataset.editcap, baseRate: num });
         if (data.status === "ok") {
-          showToast("Capacity updated");
+          showToast("Rate updated");
           await loadServerConfig(true);
           refreshMachinesList();
         } else {
@@ -704,7 +729,6 @@
 
   function populateGeneralPanel() {
     els.timeoutInput.value = (SERVER_CONFIG && SERVER_CONFIG.sessionTimeoutHours) || 12;
-    els.slotsInput.value = (SERVER_CONFIG && SERVER_CONFIG.maxScheduleSlots) || 4;
     els.newAdminPinInput.value = "";
     const st = (SERVER_CONFIG && SERVER_CONFIG.shiftTimes) || {};
     els.dayShiftStartInput.value = (st.Day && st.Day.start) || "09:00";
@@ -787,6 +811,7 @@
     els.itemCodeInput.value = "";
     els.itemCodeInput.classList.add("hidden");
     els.itemResults.classList.add("hidden");
+    refreshShiftUsage(); // rate can depend on item code (Item Capacity Override)
   }
 
   function clearItem() {
@@ -795,13 +820,14 @@
     els.itemCodeInput.classList.remove("hidden");
     els.itemCodeInput.value = "";
     els.itemCodeInput.focus();
+    refreshShiftUsage();
   }
 
   // ---------- Achievement badge ----------
 
   function updateAchievement(scheduledQty) {
-    const prod = parseFloat(els.producedQty.value);
-    if (isNaN(prod) || !scheduledQty) {
+    const prod = currentProducedQty();
+    if (!prod || !scheduledQty) {
       els.achievementBadge.classList.add("hidden");
       return;
     }
@@ -848,19 +874,26 @@
     let q = getQueue();
     if (!q.length) return;
     const remaining = [];
-    const rejectedMsgs = [];
+    let rejectedCount = 0;
     for (const entry of q) {
       const result = await sendToServer(entry);
-      if (result.ok) continue;
+      if (result.ok) {
+        markRecentSynced(entry.entryId);
+        continue;
+      }
       if (result.rejected) {
-        rejectedMsgs.push((entry.machine || "") + " " + (entry.shift || "") + ": " + (result.message || "rejected"));
-        continue; // don't keep retrying something the server actively refused
+        // Route back to the supervisor's own Recent Entries list instead of
+        // silently dropping it after a toast -- they have the floor context
+        // to actually fix it; a background log doesn't.
+        upsertRecent(entry, "Needs Fix", result.message);
+        rejectedCount++;
+        continue;
       }
       remaining.push(entry); // network problem — retry later
     }
     setQueue(remaining);
-    if (rejectedMsgs.length) {
-      showToast(rejectedMsgs.length + " queued entr" + (rejectedMsgs.length === 1 ? "y" : "ies") + " couldn't be saved: " + rejectedMsgs[0]);
+    if (rejectedCount) {
+      showToast(rejectedCount + " entr" + (rejectedCount === 1 ? "y" : "ies") + " need" + (rejectedCount === 1 ? "s" : "") + " fixing — check Recent Entries");
     } else if (remaining.length === 0 && q.length > 0) {
       showToast("Synced all queued entries");
     }
@@ -880,6 +913,124 @@
     } catch (e) {
       return { ok: false, rejected: false };
     }
+  }
+
+  // ---------- Recent Entries (edit/resave + Needs Fix) ----------
+
+  function loadRecent() {
+    try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); }
+    catch (e) { return []; }
+  }
+
+  function saveRecent(list) {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)));
+  }
+
+  function upsertRecent(entry, status, message) {
+    const list = loadRecent();
+    const idx = list.findIndex((e) => e.entryId === entry.entryId);
+    const record = Object.assign({}, entry, { status: status, savedAt: Date.now(), rejectMessage: message || "" });
+    if (idx >= 0) list[idx] = record; else list.unshift(record);
+    saveRecent(list);
+    renderRecentEntries();
+  }
+
+  function markRecentSynced(entryId) {
+    const list = loadRecent();
+    const idx = list.findIndex((e) => e.entryId === entryId);
+    if (idx >= 0) {
+      list[idx].status = "Synced";
+      list[idx].rejectMessage = "";
+      saveRecent(list);
+      renderRecentEntries();
+    }
+  }
+
+  function countNeedsFix() {
+    return loadRecent().filter((e) => session && e.department === session.department && e.status === "Needs Fix").length;
+  }
+
+  function updateNeedsFixPill() {
+    const count = countNeedsFix();
+    if (count > 0) {
+      els.needsFixPill.textContent = count + " need" + (count === 1 ? "s" : "") + " fixing";
+      els.needsFixPill.classList.remove("hidden");
+    } else {
+      els.needsFixPill.classList.add("hidden");
+    }
+  }
+
+  function renderRecentEntries() {
+    if (!els.recentEntriesList) return;
+    const list = loadRecent()
+      .filter((e) => session && e.department === session.department)
+      .sort((a, b) => (a.status === "Needs Fix" ? -1 : 0) - (b.status === "Needs Fix" ? -1 : 0));
+    els.recentEntriesList.innerHTML = "";
+    if (!list.length) {
+      els.recentEntriesList.innerHTML = '<div class="settings-empty">No recent entries yet.</div>';
+      updateNeedsFixPill();
+      return;
+    }
+    list.forEach((e) => {
+      const row = document.createElement("div");
+      row.className = "recent-entry-row" + (e.status === "Needs Fix" ? " recent-entry-flagged" : "");
+      const sub = e.status === "Needs Fix" && e.rejectMessage
+        ? escapeHtml(e.rejectMessage)
+        : escapeHtml(String(e.itemCode)) + " — Qty " + escapeHtml(String(e.producedQty || "")) + " · " + escapeHtml(e.status);
+      row.innerHTML =
+        '<div><div class="recent-entry-title">' + escapeHtml(machineDisplayName(e.machineId) || e.machineId) + " · " + escapeHtml(e.shift) + " · Slot " + escapeHtml(String(e.scheduleSlot)) +
+        (e.qtyType ? " · " + escapeHtml(e.qtyType) : "") + '</div>' +
+        '<div class="recent-entry-sub">' + sub + '</div></div>' +
+        '<button type="button" class="link-btn" data-editentry="' + escapeHtml(e.entryId) + '">' + (e.status === "Needs Fix" ? "Fix" : "Edit") + '</button>';
+      els.recentEntriesList.appendChild(row);
+    });
+    els.recentEntriesList.querySelectorAll("[data-editentry]").forEach((btn) => {
+      btn.addEventListener("click", () => loadEntryForEdit(btn.dataset.editentry));
+    });
+    updateNeedsFixPill();
+  }
+
+  function loadEntryForEdit(entryId) {
+    const entry = loadRecent().find((e) => e.entryId === entryId);
+    if (!entry || !session) return;
+    editingEntryId = entryId;
+    editingQtyType = session.department === "Rolling" ? (entry.qtyType || null) : null;
+
+    els.machine.value = entry.machineId;
+    els.shift.value = entry.shift;
+    refreshScheduleSlots(session.department);
+    els.scheduleSlot.value = entry.scheduleSlot;
+
+    const item = ITEMS.find((it) => String(it.code) === String(entry.itemCode));
+    selectItem(item || { code: entry.itemCode, name: "" });
+
+    els.changeStart.value = entry.scheduleStart || "";
+    els.changeEnd.value = entry.scheduleEnd || "";
+
+    if (session.department === "Rolling") {
+      els.producedQtyManual.value = entry.qtyType === "Manual" ? (entry.producedQty || "") : "";
+      els.producedQtyAuto.value = entry.qtyType === "Auto" ? (entry.producedQty || "") : "";
+      els.manualCapRate.value = entry.qtyType === "Manual" ? (entry.manualCapRate || "") : "";
+      els.manualCapRateField.classList.toggle("hidden", els.producedQtyManual.value === "");
+    } else {
+      els.producedQty.value = entry.producedQty || "";
+    }
+
+    els.reason.value = entry.reason || "";
+    els.remarks.value = entry.remarks || "";
+    els.operatorName.value = entry.operatorName || "";
+
+    els.submitBtn.textContent = "Save changes";
+    els.cancelEditBtn.classList.remove("hidden");
+    onEntryInputsChanged();
+  }
+
+  function cancelEdit() {
+    editingEntryId = null;
+    editingQtyType = null;
+    els.submitBtn.textContent = "Save entry";
+    els.cancelEditBtn.classList.add("hidden");
+    resetEntryFields();
   }
 
   // ---------- Network status ----------
@@ -903,6 +1054,10 @@
     els.changeStart.value = "";
     els.changeEnd.value = "";
     els.producedQty.value = "";
+    els.producedQtyManual.value = "";
+    els.producedQtyAuto.value = "";
+    els.manualCapRate.value = "";
+    els.manualCapRateField.classList.add("hidden");
     els.achievementBadge.classList.add("hidden");
     els.scheduledPreview.classList.add("hidden");
     els.capacityWarning.classList.add("hidden");
@@ -958,18 +1113,16 @@
       showToast("Fill in name, PIN, and department");
       return;
     }
-    await withBusy(els.supSaveBtn, "Saving…", async () => {
-      const data = editingSupervisorPin
-        ? await adminPost("updateSupervisor", { originalPin: editingSupervisorPin, name, pin, department: dept })
-        : await adminPost("addSupervisor", { name, pin, department: dept });
-      if (data.status === "ok") {
-        showToast(editingSupervisorPin ? "Supervisor updated" : "Supervisor added");
-        resetSupervisorForm();
-        refreshSupervisorsList();
-      } else {
-        showToast(data.message || "Could not save");
-      }
-    });
+    const data = editingSupervisorPin
+      ? await adminPost("updateSupervisor", { originalPin: editingSupervisorPin, name, pin, department: dept })
+      : await adminPost("addSupervisor", { name, pin, department: dept });
+    if (data.status === "ok") {
+      showToast(editingSupervisorPin ? "Supervisor updated" : "Supervisor added");
+      resetSupervisorForm();
+      refreshSupervisorsList();
+    } else {
+      showToast(data.message || "Could not save");
+    }
   });
 
   els.supCancelBtn.addEventListener("click", resetSupervisorForm);
@@ -978,88 +1131,79 @@
 
   els.addMachineBtn.addEventListener("click", async () => {
     const dept = els.machDeptSelect.value;
-    const machine = els.newMachineInput.value.trim();
-    const capacity = Number(els.newMachineCapacity.value) || 0;
-    if (!dept || !machine) {
+    const displayName = els.newMachineInput.value.trim();
+    const baseRate = Number(els.newMachineCapacity.value) || 0;
+    if (!dept || !displayName) {
       showToast("Pick a department and enter a machine name");
       return;
     }
-    await withBusy(els.addMachineBtn, "Adding…", async () => {
-      const data = await adminPost("addMachine", { department: dept, machine, capacityPerMin: capacity });
-      if (data.status === "ok") {
-        showToast("Machine added");
-        els.newMachineInput.value = "";
-        els.newMachineCapacity.value = "";
-        await loadServerConfig(true);
-        refreshMachinesList();
-      } else {
-        showToast(data.message || "Could not add");
-      }
-    });
+    const data = await adminPost("addMachine", { department: dept, displayName, baseRate });
+    if (data.status === "ok") {
+      showToast("Machine added");
+      els.newMachineInput.value = "";
+      els.newMachineCapacity.value = "";
+      await loadServerConfig(true);
+      refreshMachinesList();
+    } else {
+      showToast(data.message || "Could not add");
+    }
   });
 
   els.addDeptBtn.addEventListener("click", async () => {
     const dept = els.newDeptName.value.trim();
-    const machine = els.newDeptMachine.value.trim();
-    const capacity = Number(els.newDeptMachineCapacity.value) || 0;
-    if (!dept || !machine) {
+    const displayName = els.newDeptMachine.value.trim();
+    const baseRate = Number(els.newDeptMachineCapacity.value) || 0;
+    if (!dept || !displayName) {
       showToast("Enter a department name and its first machine");
       return;
     }
-    await withBusy(els.addDeptBtn, "Creating…", async () => {
-      const data = await adminPost("addMachine", { department: dept, machine, capacityPerMin: capacity });
-      if (data.status === "ok") {
-        showToast("Department created");
-        els.newDeptName.value = "";
-        els.newDeptMachine.value = "";
-        els.newDeptMachineCapacity.value = "";
-        await loadServerConfig(true);
-        populateMachDeptSelect();
-        populateSupDeptSelect();
-        els.machDeptSelect.value = dept;
-        refreshMachinesList();
-      } else {
-        showToast(data.message || "Could not create department");
-      }
-    });
+    const data = await adminPost("addMachine", { department: dept, displayName, baseRate });
+    if (data.status === "ok") {
+      showToast("Department created");
+      els.newDeptName.value = "";
+      els.newDeptMachine.value = "";
+      els.newDeptMachineCapacity.value = "";
+      await loadServerConfig(true);
+      populateMachDeptSelect();
+      populateSupDeptSelect();
+      els.machDeptSelect.value = dept;
+      refreshMachinesList();
+    } else {
+      showToast(data.message || "Could not create department");
+    }
   });
 
   els.addReasonBtn.addEventListener("click", async () => {
     const reason = els.newReasonInput.value.trim();
     if (!reason) return;
-    await withBusy(els.addReasonBtn, "Adding…", async () => {
-      const data = await adminPost("addReason", { reason });
-      if (data.status === "ok") {
-        showToast("Reason added");
-        els.newReasonInput.value = "";
-        await loadServerConfig(true);
-        refreshReasonsList();
-        populateStaticFields();
-      } else {
-        showToast(data.message || "Could not add");
-      }
-    });
+    const data = await adminPost("addReason", { reason });
+    if (data.status === "ok") {
+      showToast("Reason added");
+      els.newReasonInput.value = "";
+      await loadServerConfig(true);
+      refreshReasonsList();
+      populateStaticFields();
+    } else {
+      showToast(data.message || "Could not add");
+    }
   });
 
   els.saveGeneralBtn.addEventListener("click", async () => {
-    await withBusy(els.saveGeneralBtn, "Saving…", async () => {
-      const data = await adminPost("updateSettings", {
-        sessionTimeoutHours: els.timeoutInput.value,
-        maxScheduleSlots: els.slotsInput.value,
-        dayShiftStart: els.dayShiftStartInput.value,
-        dayShiftEnd: els.dayShiftEndInput.value,
-        nightShiftStart: els.nightShiftStartInput.value,
-        nightShiftEnd: els.nightShiftEndInput.value,
-      });
-      if (data.status === "ok") {
-        showToast("Settings saved");
-        await loadServerConfig(true);
-        populateStaticFields();
-        refreshShiftUsage();
-      } else {
-        showToast(data.message || "Could not save");
-      }
+    const data = await adminPost("updateSettings", {
+      sessionTimeoutHours: els.timeoutInput.value,
+      dayShiftStart: els.dayShiftStartInput.value,
+      dayShiftEnd: els.dayShiftEndInput.value,
+      nightShiftStart: els.nightShiftStartInput.value,
+      nightShiftEnd: els.nightShiftEndInput.value,
     });
+    if (data.status === "ok") {
+      showToast("Settings saved");
+      await loadServerConfig(true);
+      populateStaticFields();
+      refreshShiftUsage();
+    } else {
+      showToast(data.message || "Could not save");
+    }
   });
 
   els.saveAdminPinBtn.addEventListener("click", async () => {
@@ -1069,16 +1213,14 @@
       showToast("Admin PIN must be " + len + " digits");
       return;
     }
-    await withBusy(els.saveAdminPinBtn, "Updating…", async () => {
-      const data = await adminPost("updateSettings", { newAdminPin: newPin });
-      if (data.status === "ok") {
-        adminPin = newPin;
-        showToast("Admin PIN updated");
-        els.newAdminPinInput.value = "";
-      } else {
-        showToast(data.message || "Could not update");
-      }
-    });
+    const data = await adminPost("updateSettings", { newAdminPin: newPin });
+    if (data.status === "ok") {
+      adminPin = newPin;
+      showToast("Admin PIN updated");
+      els.newAdminPinInput.value = "";
+    } else {
+      showToast(data.message || "Could not update");
+    }
   });
 
   // ---------- Event wiring: entry form ----------
@@ -1094,12 +1236,19 @@
   els.changeStart.addEventListener("input", onEntryInputsChanged);
   els.changeEnd.addEventListener("input", onEntryInputsChanged);
   els.producedQty.addEventListener("input", onEntryInputsChanged);
+  els.producedQtyManual.addEventListener("input", () => {
+    els.manualCapRateField.classList.toggle("hidden", els.producedQtyManual.value === "");
+    onEntryInputsChanged();
+  });
+  els.producedQtyAuto.addEventListener("input", onEntryInputsChanged);
+  els.manualCapRate.addEventListener("input", onEntryInputsChanged);
 
   els.itemCodeInput.addEventListener("input", () => {
     renderItemResults(searchItems(els.itemCodeInput.value));
   });
 
   els.clearItem.addEventListener("click", clearItem);
+  els.cancelEditBtn.addEventListener("click", cancelEdit);
 
   window.addEventListener("online", () => {
     updateNetPill();
@@ -1107,12 +1256,9 @@
   });
   window.addEventListener("offline", updateNetPill);
 
-  let submitBusy = false;
-
   els.form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    if (submitBusy) return; // double-submit guard
     if (!session) {
       showToast("Please log in first");
       return;
@@ -1131,10 +1277,6 @@
       showToast("Enter a valid start and end time for this schedule");
       return;
     }
-    if (!isTimeWithinShiftWindow(els.shift.value, els.changeEnd.value, SERVER_CONFIG && SERVER_CONFIG.shiftTimes)) {
-      showToast("End time must fall within the " + els.shift.value + " shift window — check it hasn't crossed into the next shift.");
-      return;
-    }
     if (shiftUsage) {
       const projected = (shiftUsage.usedMinutes || 0) + thisMin;
       if (projected > (shiftUsage.totalMinutes || 0) + 0.5) {
@@ -1144,45 +1286,82 @@
       }
     }
 
-    const entry = {
-      entryId: uuid(),
+    const isRolling = session.department === "Rolling";
+    const baseFields = {
       clientTimestamp: new Date().toISOString(),
       secretToken: CONFIG.SECRET_TOKEN,
       department: session.department,
-      machine: els.machine.value,
+      machineId: els.machine.value,
       shift: els.shift.value,
       scheduleSlot: els.scheduleSlot.value,
       itemCode: selectedItem.code,
-      itemName: selectedItem.name,
-      producedQty: els.producedQty.value,
       reason: els.reason.value,
       remarks: els.remarks.value,
-      partChangeStart: els.changeStart.value,
-      partChangeEnd: els.changeEnd.value,
+      scheduleStart: els.changeStart.value,
+      scheduleEnd: els.changeEnd.value,
       operatorName: els.operatorName.value,
       supervisorName: session.name,
     };
 
-    submitBusy = true;
-    els.submitBtn.disabled = true;
-    try {
-      saveLast();
-
-      // E10: save is always local-first and instant. We never await the server
-      // in the critical path — queue now, show success now, sync in the background.
-      enqueue(entry);
-      showToast(CONFIG.APPS_SCRIPT_URL ? "Entry saved — syncing…" : "Saved locally (no server configured)");
-      resetEntryFields();
-      refreshShiftUsage();
-
-      // Fire-and-forget background sync attempt. If it fails (offline, or the
-      // server actively rejects it), the periodic flushQueue() retry/report
-      // loop already handles it — nothing further to do here.
-      flushQueue();
-    } finally {
-      submitBusy = false;
-      els.submitBtn.disabled = false;
+    const entries = [];
+    if (isRolling) {
+      const manual = els.producedQtyManual.value;
+      const auto = els.producedQtyAuto.value;
+      if (manual === "" && auto === "") {
+        showToast("Enter a Manual or Auto qty");
+        return;
+      }
+      if (manual !== "") {
+        const manualCapRate = els.manualCapRate.value;
+        if (manualCapRate === "" || Number(manualCapRate) <= 0) {
+          showToast("Enter a Manual capacity rate for this entry");
+          return;
+        }
+        entries.push(Object.assign({}, baseFields, {
+          entryId: (editingEntryId && editingQtyType === "Manual") ? editingEntryId : uuid(),
+          qtyType: "Manual", producedQty: manual, manualCapRate: manualCapRate,
+        }));
+      }
+      if (auto !== "") {
+        entries.push(Object.assign({}, baseFields, {
+          entryId: (editingEntryId && editingQtyType === "Auto") ? editingEntryId : uuid(),
+          qtyType: "Auto", producedQty: auto,
+        }));
+      }
+    } else {
+      entries.push(Object.assign({}, baseFields, {
+        entryId: editingEntryId || uuid(),
+        qtyType: "", producedQty: els.producedQty.value,
+      }));
     }
+
+    saveLast();
+    const wasEditing = !!editingEntryId;
+
+    for (const entry of entries) {
+      if (navigator.onLine && CONFIG.APPS_SCRIPT_URL) {
+        const result = await sendToServer(entry);
+        if (result.rejected) {
+          showToast(result.message || "Could not save — adjust the entry and try again");
+          return; // keep the form as-is so they can fix it
+        }
+        if (result.ok) {
+          upsertRecent(entry, "Synced");
+          continue;
+        }
+      }
+      // Network unreachable (not an active rejection) — queue for later.
+      enqueue(entry);
+      upsertRecent(entry, "Queued");
+    }
+
+    editingEntryId = null;
+    editingQtyType = null;
+    els.submitBtn.textContent = "Save entry";
+    els.cancelEditBtn.classList.add("hidden");
+    showToast(wasEditing ? "Entry updated" : "Entry saved");
+    resetEntryFields();
+    refreshShiftUsage();
   });
 
   // ---------- Init ----------
