@@ -17,6 +17,7 @@
   <div class="brand-row">
     <div class="brand"><span class="brand-dot"></span>Production Entry</div>
     <div class="status-group">
+      <span id="needsFixPill" class="pill pill-needsfix hidden">0 need fixing</span>
       <span id="pendingPill" class="pill pill-pending hidden">0 queued</span>
       <span id="netPill" class="pill pill-online">Online</span>
     </div>
@@ -115,9 +116,25 @@
     </section>
 
     <section class="card">
-      <div class="field">
+      <div id="producedQtyGroup" class="field">
         <label for="producedQty">Produced qty</label>
         <input id="producedQty" type="number" inputmode="numeric" min="0" required>
+      </div>
+      <div id="rollingQtyGroup" class="hidden">
+        <div class="grid2">
+          <div class="field">
+            <label for="producedQtyManual">Manual qty</label>
+            <input id="producedQtyManual" type="number" inputmode="numeric" min="0">
+          </div>
+          <div class="field">
+            <label for="producedQtyAuto">Auto qty</label>
+            <input id="producedQtyAuto" type="number" inputmode="numeric" min="0">
+          </div>
+        </div>
+        <div id="manualCapRateField" class="field hidden">
+          <label for="manualCapRate">Manual capacity rate (pcs/min)</label>
+          <input id="manualCapRate" type="number" inputmode="decimal" min="0" step="0.1">
+        </div>
       </div>
       <div id="achievementBadge" class="achievement hidden"></div>
     </section>
@@ -143,8 +160,14 @@
     </section>
 
     <button type="submit" id="submitBtn" class="submit-btn">Save entry</button>
+    <button type="button" id="cancelEditBtn" class="link-btn hidden">Cancel edit</button>
     <div class="footnote">Entries save locally first, then sync automatically when online.</div>
   </form>
+
+  <section class="card">
+    <div class="settings-title">Recent entries</div>
+    <div id="recentEntriesList" class="settings-list"></div>
+  </section>
 </main>
 
 <div id="settingsScreen" class="settings-screen hidden">
@@ -252,10 +275,6 @@
         <div class="field">
           <label for="timeoutInput">Session timeout (hours)</label>
           <input id="timeoutInput" type="number" min="1" max="72">
-        </div>
-        <div class="field">
-          <label for="slotsInput">Max schedule slots per shift</label>
-          <input id="slotsInput" type="number" min="1" max="10">
         </div>
         <button type="button" id="saveGeneralBtn" class="settings-save-btn">Save settings</button>
       </div>
