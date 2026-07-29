@@ -97,7 +97,7 @@
     nightShiftStartInput: $("nightShiftStartInput"),
     nightShiftEndInput: $("nightShiftEndInput"),
     timeoutInput: $("timeoutInput"),
-saveGeneralBtn: $("saveGeneralBtn"),
+    saveGeneralBtn: $("saveGeneralBtn"),
     slotsDeptSelect: $("slotsDeptSelect"),
     daySlotsInput: $("daySlotsInput"),
     nightSlotsInput: $("nightSlotsInput"),
@@ -372,7 +372,7 @@ saveGeneralBtn: $("saveGeneralBtn"),
         body: JSON.stringify({ action: "login", pin: pin, secretToken: CONFIG.SECRET_TOKEN }),
       });
       const data = await res.json();
-     if (data.status === "ok") {
+      if (data.status === "ok") {
         const epoch = await fetchSessionEpoch();
         saveSession({ name: data.name, department: data.department, loginAt: Date.now(), sessionEpoch: epoch });
         enterApp(session);
@@ -423,7 +423,7 @@ saveGeneralBtn: $("saveGeneralBtn"),
     }
   }
 
-function checkSessionExpiryLoop() {
+  function checkSessionExpiryLoop() {
     setInterval(() => {
       if (session && sessionExpired(session)) {
         clearSession();
@@ -586,7 +586,7 @@ function checkSessionExpiryLoop() {
     els.appShell.classList.add("hidden");
     els.settingsScreen.classList.remove("hidden");
     switchSettingsTab("supervisors");
-   populateSupDeptSelect();
+    populateSupDeptSelect();
     populateMachDeptSelect();
     populateSlotsDeptSelect();
     resetSupervisorForm();
@@ -611,7 +611,7 @@ function checkSessionExpiryLoop() {
     fillSelect(els.supDept, Object.keys(SERVER_CONFIG.departments || {}), null);
   }
 
-function populateMachDeptSelect() {
+  function populateMachDeptSelect() {
     fillSelect(els.machDeptSelect, Object.keys(SERVER_CONFIG.departments || {}), null);
   }
 
@@ -741,6 +741,7 @@ function populateMachDeptSelect() {
         }
       });
     });
+  }
 
   function refreshReasonsList() {
     const reasons = SERVER_CONFIG.reasons || [];
@@ -1314,6 +1315,27 @@ function populateMachDeptSelect() {
     }
   });
 
+  els.updateSlotsBtn.addEventListener("click", async () => {
+    const dept = els.slotsDeptSelect.value;
+    const daySlots = Number(els.daySlotsInput.value) || 0;
+    const nightSlots = Number(els.nightSlotsInput.value) || 0;
+    if (!dept || daySlots < 1 || nightSlots < 1) {
+      showToast("Pick a department and enter Day/Night slots (1 or more)");
+      return;
+    }
+    const data = await adminPost("updateDepartmentSlots", { department: dept, daySlots: daySlots, nightSlots: nightSlots });
+    if (data.status === "ok") {
+      showToast("Slots updated for " + data.updated + " machine" + (data.updated === 1 ? "" : "s") + " in " + dept);
+      if (session) {
+        session.sessionEpoch = data.sessionEpoch;
+        saveSession(session);
+      }
+      await loadServerConfig(true);
+    } else {
+      showToast(data.message || "Could not update slots");
+    }
+  });
+
   // ---------- Event wiring: entry form ----------
 
   els.machine.addEventListener("change", () => {
@@ -1447,7 +1469,7 @@ function populateMachDeptSelect() {
       upsertRecent(entry, "Queued");
     }
 
-   editingEntryId = null;
+    editingEntryId = null;
     editingQtyType = null;
     els.submitBtn.textContent = "Save entry";
     els.cancelEditBtn.classList.add("hidden");
@@ -1456,28 +1478,6 @@ function populateMachDeptSelect() {
     refreshShiftUsage();
   });
 
-  els.updateSlotsBtn.addEventListener("click", async () => {
-    const dept = els.slotsDeptSelect.value;
-    const daySlots = Number(els.daySlotsInput.value) || 0;
-    const nightSlots = Number(els.nightSlotsInput.value) || 0;
-    if (!dept || daySlots < 1 || nightSlots < 1) {
-      showToast("Pick a department and enter Day/Night slots (1 or more)");
-      return;
-    }
-    const data = await adminPost("updateDepartmentSlots", { department: dept, daySlots: daySlots, nightSlots: nightSlots });
-    if (data.status === "ok") {
-      showToast("Slots updated for " + data.updated + " machine" + (data.updated === 1 ? "" : "s") + " in " + dept);
-      if (session) {
-        session.sessionEpoch = data.sessionEpoch;
-        saveSession(session);
-      }
-      await loadServerConfig(true);
-    } else {
-      showToast(data.message || "Could not update slots");
-    }
-  });
-
-  // ---------- Init ----------
   // ---------- Init ----------
 
   async function init() {
@@ -1496,7 +1496,7 @@ function populateMachDeptSelect() {
       openLoginScreen("supervisor");
     }
 
- checkSessionExpiryLoop();
+    checkSessionExpiryLoop();
     checkSessionEpochLoop();
 
     if ("serviceWorker" in navigator) {
