@@ -518,12 +518,30 @@
     ]
   },
   "slotsAllowed": {
-    "Rolling": 3,
-    "Forging-1": 2,
-    "Forging-2": 2,
-    "Forging-2 TM": 2,
-    "Forging-3": 2,
-    "Machining": 2
+    "Rolling": {
+      "Day": 3,
+      "Night": 3
+    },
+    "Forging-1": {
+      "Day": 2,
+      "Night": 2
+    },
+    "Forging-2": {
+      "Day": 2,
+      "Night": 2
+    },
+    "Forging-2 TM": {
+      "Day": 2,
+      "Night": 2
+    },
+    "Forging-3": {
+      "Day": 2,
+      "Night": 2
+    },
+    "Machining": {
+      "Day": 2,
+      "Night": 2
+    }
   },
   "reasons": [
     "1. Raw Material Not available",
