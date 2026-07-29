@@ -704,7 +704,6 @@ function populateMachDeptSelect() {
         '<div class="settings-row-sub">' + (m.baseRate || 0) + ' / min · Slots — Day ' + m.daySlotsAllowed + ' / Night ' + m.nightSlotsAllowed + '</div></div>' +
         '<div class="settings-row-actions">' +
         '<button type="button" class="link-btn" data-editcap="' + escapeHtml(m.machineId) + '">Edit rate</button>' +
-        '<button type="button" class="link-btn" data-editslots="' + escapeHtml(m.machineId) + '">Edit slots</button>' +
         '<button type="button" class="remove-x" data-remove="' + escapeHtml(m.machineId) + '" aria-label="Remove">×</button>' +
         '</div>';
       els.machinesList.appendChild(row);
