@@ -97,7 +97,11 @@
     nightShiftStartInput: $("nightShiftStartInput"),
     nightShiftEndInput: $("nightShiftEndInput"),
     timeoutInput: $("timeoutInput"),
-    saveGeneralBtn: $("saveGeneralBtn"),
+saveGeneralBtn: $("saveGeneralBtn"),
+    slotsDeptSelect: $("slotsDeptSelect"),
+    daySlotsInput: $("daySlotsInput"),
+    nightSlotsInput: $("nightSlotsInput"),
+    updateSlotsBtn: $("updateSlotsBtn"),
     newAdminPinInput: $("newAdminPinInput"),
     saveAdminPinBtn: $("saveAdminPinBtn"),
   };
@@ -368,8 +372,9 @@
         body: JSON.stringify({ action: "login", pin: pin, secretToken: CONFIG.SECRET_TOKEN }),
       });
       const data = await res.json();
-      if (data.status === "ok") {
-        saveSession({ name: data.name, department: data.department, loginAt: Date.now() });
+     if (data.status === "ok") {
+        const epoch = await fetchSessionEpoch();
+        saveSession({ name: data.name, department: data.department, loginAt: Date.now(), sessionEpoch: epoch });
         enterApp(session);
       } else {
         openLoginScreen("supervisor", data.message || "Invalid PIN");
@@ -418,11 +423,48 @@
     }
   }
 
-  function checkSessionExpiryLoop() {
+function checkSessionExpiryLoop() {
     setInterval(() => {
       if (session && sessionExpired(session)) {
         clearSession();
         openLoginScreen("supervisor", "Session expired — please log in again.");
+      }
+    }, 60000);
+  }
+
+  // ---------- Session epoch (force-logout when an admin updates settings) ----------
+
+  async function fetchSessionEpoch() {
+    if (!CONFIG.APPS_SCRIPT_URL || !navigator.onLine) return 0;
+    try {
+      const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "checkSessionEpoch", secretToken: CONFIG.SECRET_TOKEN }),
+      });
+      const data = await res.json();
+      return (data && data.status === "ok") ? (data.sessionEpoch || 0) : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Polls every 60s. A failed/offline check returns 0 and is ignored -- retried
+  // next cycle. The first successful check after login just adopts the epoch as
+  // a baseline (no logout); only a later mismatch against that baseline logs out.
+  function checkSessionEpochLoop() {
+    setInterval(async () => {
+      if (!session || !navigator.onLine) return;
+      const epoch = await fetchSessionEpoch();
+      if (!epoch) return;
+      if (!session.sessionEpoch) {
+        session.sessionEpoch = epoch;
+        saveSession(session);
+        return;
+      }
+      if (epoch !== session.sessionEpoch) {
+        clearSession();
+        openLoginScreen("supervisor", "Settings updated — please log in again.");
       }
     }, 60000);
   }
@@ -544,8 +586,9 @@
     els.appShell.classList.add("hidden");
     els.settingsScreen.classList.remove("hidden");
     switchSettingsTab("supervisors");
-    populateSupDeptSelect();
+   populateSupDeptSelect();
     populateMachDeptSelect();
+    populateSlotsDeptSelect();
     resetSupervisorForm();
     refreshSupervisorsList();
     refreshMachinesList();
@@ -568,8 +611,12 @@
     fillSelect(els.supDept, Object.keys(SERVER_CONFIG.departments || {}), null);
   }
 
-  function populateMachDeptSelect() {
+function populateMachDeptSelect() {
     fillSelect(els.machDeptSelect, Object.keys(SERVER_CONFIG.departments || {}), null);
+  }
+
+  function populateSlotsDeptSelect() {
+    fillSelect(els.slotsDeptSelect, Object.keys(SERVER_CONFIG.departments || {}), null);
   }
 
   async function refreshSupervisorsList() {
@@ -1425,7 +1472,7 @@
       upsertRecent(entry, "Queued");
     }
 
-    editingEntryId = null;
+   editingEntryId = null;
     editingQtyType = null;
     els.submitBtn.textContent = "Save entry";
     els.cancelEditBtn.classList.add("hidden");
@@ -1434,6 +1481,28 @@
     refreshShiftUsage();
   });
 
+  els.updateSlotsBtn.addEventListener("click", async () => {
+    const dept = els.slotsDeptSelect.value;
+    const daySlots = Number(els.daySlotsInput.value) || 0;
+    const nightSlots = Number(els.nightSlotsInput.value) || 0;
+    if (!dept || daySlots < 1 || nightSlots < 1) {
+      showToast("Pick a department and enter Day/Night slots (1 or more)");
+      return;
+    }
+    const data = await adminPost("updateDepartmentSlots", { department: dept, daySlots: daySlots, nightSlots: nightSlots });
+    if (data.status === "ok") {
+      showToast("Slots updated for " + data.updated + " machine" + (data.updated === 1 ? "" : "s") + " in " + dept);
+      if (session) {
+        session.sessionEpoch = data.sessionEpoch;
+        saveSession(session);
+      }
+      await loadServerConfig(true);
+    } else {
+      showToast(data.message || "Could not update slots");
+    }
+  });
+
+  // ---------- Init ----------
   // ---------- Init ----------
 
   async function init() {
@@ -1452,7 +1521,8 @@
       openLoginScreen("supervisor");
     }
 
-    checkSessionExpiryLoop();
+ checkSessionExpiryLoop();
+    checkSessionEpochLoop();
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
