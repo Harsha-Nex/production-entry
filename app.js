@@ -4,10 +4,15 @@
   const QUEUE_KEY = "prodentry_queue_v1";
   const LAST_KEY = "prodentry_last_v1";
   const ITEMS_CACHE_KEY = "prodentry_items_cache_v1";
+  const ITEMS_VERSION_KEY = "prodentry_items_version_v1";
   const SESSION_KEY = "prodentry_session_v1";
   const CONFIG_CACHE_KEY = "prodentry_config_cache_v1";
+  const CONFIG_VERSION_KEY = "prodentry_config_version_v1";
   const RECENT_KEY = "prodentry_recent_v1";
   const RECENT_MAX = 15;
+
+  const BASE_RETRY_MS = 20000;
+  const MAX_RETRY_MS = 5 * 60 * 1000;
 
   let ITEMS = [];
   let SERVER_CONFIG = null; // { departments: {dept: [{machineId, displayName}]}, slotsAllowed: {dept: {Day, Night}}, reasons, sessionTimeoutHours, shiftTimes }
@@ -19,7 +24,11 @@
   let editingSupervisorPin = null;
   let editingEntryId = null; // set when editing a row loaded from Recent Entries
   let editingQtyType = null; // "Manual" | "Auto" | null -- which Rolling row editingEntryId belongs to
+  let editingLastKnownUpdated = null; // server's Last Updated value as of when this device last saw it (§4.7 conflict check)
   let shiftUsage = null; // latest { usedMinutes, totalMinutes, capacityPerMin, ... } for current machine+shift+item+today
+  let partsSummaryDate = new Date(); // month cursor for "This month's parts" -- always normalized to day 1
+  let retryTimer = null;
+  let currentRetryDelay = BASE_RETRY_MS;
 
   const $ = (id) => document.getElementById(id);
 
@@ -57,6 +66,10 @@
     submitBtn: $("submitBtn"),
     cancelEditBtn: $("cancelEditBtn"),
     recentEntriesList: $("recentEntriesList"),
+    partsSummaryList: $("partsSummaryList"),
+    partsSummaryMonthLabel: $("partsSummaryMonthLabel"),
+    partsSummaryPrevBtn: $("partsSummaryPrevBtn"),
+    partsSummaryNextBtn: $("partsSummaryNextBtn"),
     toast: $("toast"),
     netPill: $("netPill"),
     pendingPill: $("pendingPill"),
@@ -161,6 +174,10 @@
   }
 
   // ---------- Server config (departments/machines, reasons, timeout, shift clock) ----------
+  // Version-gated (§4.8): sends the locally-stored version; server replies
+  // "unchanged" (tiny) on a match, or a full payload + new version on a mismatch.
+  // First-ever load has no stored version, which is treated as a mismatch below --
+  // never as "unchanged" -- so a fresh device always gets the full payload once.
 
   async function loadServerConfig(forceRefresh) {
     if (!forceRefresh) {
@@ -172,12 +189,16 @@
 
     if (CONFIG.APPS_SCRIPT_URL && navigator.onLine) {
       try {
-        const res = await fetch(CONFIG.APPS_SCRIPT_URL + "?action=config");
+        const cachedVersion = localStorage.getItem(CONFIG_VERSION_KEY) || "";
+        const res = await fetch(CONFIG.APPS_SCRIPT_URL + "?action=config&v=" + encodeURIComponent(cachedVersion));
         if (res.ok) {
           const fresh = await res.json();
-          if (fresh && fresh.departments) {
+          if (fresh && fresh.status === "unchanged") {
+            // Server confirms our cached config is current -- nothing to do.
+          } else if (fresh && fresh.departments) {
             SERVER_CONFIG = fresh;
             localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(fresh));
+            if (fresh.version) localStorage.setItem(CONFIG_VERSION_KEY, String(fresh.version));
           }
         }
       } catch (e) { /* keep cached/bootstrap */ }
@@ -327,6 +348,9 @@
     refreshScheduleSlots(s.department, els.shift.value);
     renderRecentEntries();
     refreshShiftUsage();
+    partsSummaryDate = new Date();
+    partsSummaryDate.setDate(1);
+    loadPartsSummary();
   }
 
   function openLoginScreen(mode, message) {
@@ -566,6 +590,73 @@
     renderShiftUsage();
   }
 
+  // ---------- This month's parts (supervisor, own department only) ----------
+  // Read-only, department locked to the logged-in supervisor's own -- never a
+  // picker. Fetched on entering the app and on month navigation only, not
+  // polled continuously (same reasoning as the dashboard's refresh policy, §6.5).
+
+  function monthKey(d) {
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+
+  function monthLabel(d) {
+    return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }
+
+  async function loadPartsSummary() {
+    if (!session || !els.partsSummaryList) return;
+    els.partsSummaryMonthLabel.textContent = monthLabel(partsSummaryDate);
+
+    const now = new Date();
+    els.partsSummaryNextBtn.disabled = partsSummaryDate.getFullYear() === now.getFullYear() && partsSummaryDate.getMonth() === now.getMonth();
+
+    if (!CONFIG.APPS_SCRIPT_URL || !navigator.onLine) {
+      els.partsSummaryList.innerHTML = '<div class="settings-empty">Connect to the internet to load this.</div>';
+      return;
+    }
+    els.partsSummaryList.innerHTML = '<div class="settings-empty">Loading…</div>';
+    try {
+      const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "getMyPartsSummary", secretToken: CONFIG.SECRET_TOKEN,
+          department: session.department, month: monthKey(partsSummaryDate),
+        }),
+      });
+      const data = await res.json();
+      if (data && data.status === "ok") renderPartsSummary(data.parts || []);
+      else els.partsSummaryList.innerHTML = '<div class="settings-empty">Could not load this month\u2019s parts.</div>';
+    } catch (e) {
+      els.partsSummaryList.innerHTML = '<div class="settings-empty">Could not reach the server.</div>';
+    }
+  }
+
+  function renderPartsSummary(parts) {
+    els.partsSummaryList.innerHTML = "";
+    if (!parts.length) {
+      els.partsSummaryList.innerHTML = '<div class="settings-empty">No production logged yet this month.</div>';
+      return;
+    }
+    parts.forEach((p) => {
+      const row = document.createElement("div");
+      row.className = "part-row";
+      let badge = '<span class="part-badge part-badge-neutral">Not scheduled</span>';
+      if (p.inSchedule && p.achievementPct !== null && p.achievementPct !== undefined) {
+        const pct = p.achievementPct;
+        const cls = pct >= 95 ? "part-badge-green" : pct >= 70 ? "part-badge-amber" : "part-badge-red";
+        badge = '<span class="part-badge ' + cls + '">' + pct + '% of plan</span>';
+      }
+      row.innerHTML =
+        '<div><div class="part-row-title">' + escapeHtml(p.itemCode) + '</div>' +
+        '<div class="part-row-sub">' + escapeHtml(p.itemName || "") + '</div></div>' +
+        '<div class="part-row-stats"><div class="part-row-produced">' + escapeHtml(String(p.producedQty)) + '</div>' +
+        (p.inSchedule ? '<div class="part-row-planned">of ' + escapeHtml(String(p.plannedQty)) + ' planned</div>' : '') +
+        badge + '</div>';
+      els.partsSummaryList.appendChild(row);
+    });
+  }
+
   // ---------- Admin / Settings ----------
 
   async function adminPostRaw(payload) {
@@ -785,6 +876,8 @@
   }
 
   // ---------- Item master (bundled + refreshed from server when online) ----------
+  // Version-gated the same way as config (§4.8) -- "unchanged" means the local
+  // cache is already current, so nothing is re-downloaded or re-written.
 
   async function loadItems() {
     try {
@@ -807,12 +900,15 @@
   async function refreshItemsFromServer() {
     if (!CONFIG.APPS_SCRIPT_URL || !navigator.onLine) return;
     try {
-      const res = await fetch(CONFIG.APPS_SCRIPT_URL + "?action=items", { method: "GET" });
+      const cachedVersion = localStorage.getItem(ITEMS_VERSION_KEY) || "";
+      const res = await fetch(CONFIG.APPS_SCRIPT_URL + "?action=items&v=" + encodeURIComponent(cachedVersion), { method: "GET" });
       if (!res.ok) return;
       const fresh = await res.json();
-      if (Array.isArray(fresh) && fresh.length) {
-        ITEMS = fresh;
-        localStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify(fresh));
+      if (fresh && fresh.status === "unchanged") return; // local cache is already current
+      if (fresh && fresh.status === "ok" && Array.isArray(fresh.items)) {
+        ITEMS = fresh.items;
+        localStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify(fresh.items));
+        if (fresh.version) localStorage.setItem(ITEMS_VERSION_KEY, String(fresh.version));
       }
     } catch (e) { /* silent */ }
   }
@@ -961,16 +1057,28 @@
     setQueue(q);
   }
 
+  // Returns true if any entry is still queued because of a network problem
+  // (not a rejection or conflict) -- the caller uses this to grow or reset the
+  // retry backoff. Rejections and conflicts are resolved (removed from the
+  // queue, surfaced to the supervisor) so they never contribute to backoff.
   async function flushQueue() {
-    if (!navigator.onLine || !CONFIG.APPS_SCRIPT_URL) return;
+    if (!navigator.onLine || !CONFIG.APPS_SCRIPT_URL) return false;
     let q = getQueue();
-    if (!q.length) return;
+    if (!q.length) return false;
     const remaining = [];
     let rejectedCount = 0;
+    let conflictCount = 0;
     for (const entry of q) {
       const result = await sendToServer(entry);
       if (result.ok) {
-        markRecentSynced(entry.entryId);
+        markRecentSynced(entry.entryId, result.lastUpdated);
+        continue;
+      }
+      if (result.conflict) {
+        // Someone else edited this entry in between -- surface it in Recent
+        // Entries rather than silently overwrite (§4.7). Not retried as-is.
+        markRecentConflict(entry.entryId, result.message);
+        conflictCount++;
         continue;
       }
       if (result.rejected) {
@@ -986,9 +1094,25 @@
     setQueue(remaining);
     if (rejectedCount) {
       showToast(rejectedCount + " entr" + (rejectedCount === 1 ? "y" : "ies") + " need" + (rejectedCount === 1 ? "s" : "") + " fixing — check Recent Entries");
+    } else if (conflictCount) {
+      showToast(conflictCount + " entr" + (conflictCount === 1 ? "y" : "ies") + " changed elsewhere — check Recent Entries");
     } else if (remaining.length === 0 && q.length > 0) {
       showToast("Synced all queued entries");
     }
+    return remaining.length > 0;
+  }
+
+  // Exponential backoff (doubling, capped) while the network keeps failing;
+  // resets to the base interval the moment a flush succeeds or the browser
+  // reports back online. Rejections/conflicts count as resolved, not failures,
+  // so a single bad entry never throttles the healthy ones behind it.
+  function scheduleNextFlush(delay) {
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(async () => {
+      const stillFailing = await flushQueue();
+      currentRetryDelay = stillFailing ? Math.min(currentRetryDelay * 2, MAX_RETRY_MS) : BASE_RETRY_MS;
+      scheduleNextFlush(currentRetryDelay);
+    }, delay);
   }
 
   async function sendToServer(entry) {
@@ -1000,14 +1124,15 @@
       });
       if (!res.ok) return { ok: false, rejected: false };
       const data = await res.json();
-      if (data && data.status === "ok") return { ok: true };
+      if (data && data.status === "ok") return { ok: true, lastUpdated: data.lastUpdated };
+      if (data && data.status === "conflict") return { ok: false, conflict: true, message: data.message };
       return { ok: false, rejected: true, message: data && data.message };
     } catch (e) {
       return { ok: false, rejected: false };
     }
   }
 
-  // ---------- Recent Entries (edit/resave + Needs Fix) ----------
+  // ---------- Recent Entries (edit/resave + Needs Fix + Conflict) ----------
 
   function loadRecent() {
     try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); }
@@ -1018,28 +1143,43 @@
     localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)));
   }
 
-  function upsertRecent(entry, status, message) {
+  function upsertRecent(entry, status, message, lastUpdated) {
     const list = loadRecent();
     const idx = list.findIndex((e) => e.entryId === entry.entryId);
-    const record = Object.assign({}, entry, { status: status, savedAt: Date.now(), rejectMessage: message || "" });
+    const record = Object.assign({}, entry, {
+      status: status, savedAt: Date.now(), rejectMessage: message || "",
+      lastUpdated: lastUpdated || entry.lastUpdated || null,
+    });
     if (idx >= 0) list[idx] = record; else list.unshift(record);
     saveRecent(list);
     renderRecentEntries();
   }
 
-  function markRecentSynced(entryId) {
+  function markRecentSynced(entryId, lastUpdated) {
     const list = loadRecent();
     const idx = list.findIndex((e) => e.entryId === entryId);
     if (idx >= 0) {
       list[idx].status = "Synced";
       list[idx].rejectMessage = "";
+      if (lastUpdated) list[idx].lastUpdated = lastUpdated;
+      saveRecent(list);
+      renderRecentEntries();
+    }
+  }
+
+  function markRecentConflict(entryId, message) {
+    const list = loadRecent();
+    const idx = list.findIndex((e) => e.entryId === entryId);
+    if (idx >= 0) {
+      list[idx].status = "Conflict";
+      list[idx].rejectMessage = message || "Changed elsewhere — reopen to see the latest";
       saveRecent(list);
       renderRecentEntries();
     }
   }
 
   function countNeedsFix() {
-    return loadRecent().filter((e) => session && e.department === session.department && e.status === "Needs Fix").length;
+    return loadRecent().filter((e) => session && e.department === session.department && (e.status === "Needs Fix" || e.status === "Conflict")).length;
   }
 
   function updateNeedsFixPill() {
@@ -1056,7 +1196,7 @@
     if (!els.recentEntriesList) return;
     const list = loadRecent()
       .filter((e) => session && e.department === session.department)
-      .sort((a, b) => (a.status === "Needs Fix" ? -1 : 0) - (b.status === "Needs Fix" ? -1 : 0));
+      .sort((a, b) => (flagRank(a) - flagRank(b)));
     els.recentEntriesList.innerHTML = "";
     if (!list.length) {
       els.recentEntriesList.innerHTML = '<div class="settings-empty">No recent entries yet.</div>';
@@ -1064,16 +1204,17 @@
       return;
     }
     list.forEach((e) => {
+      const flagged = e.status === "Needs Fix" || e.status === "Conflict";
       const row = document.createElement("div");
-      row.className = "recent-entry-row" + (e.status === "Needs Fix" ? " recent-entry-flagged" : "");
-      const sub = e.status === "Needs Fix" && e.rejectMessage
+      row.className = "recent-entry-row" + (flagged ? " recent-entry-flagged" : "");
+      const sub = flagged && e.rejectMessage
         ? escapeHtml(e.rejectMessage)
         : escapeHtml(String(e.itemCode)) + " — Qty " + escapeHtml(String(e.producedQty || "")) + " · " + escapeHtml(e.status);
       row.innerHTML =
         '<div><div class="recent-entry-title">' + escapeHtml(machineDisplayName(e.machineId) || e.machineId) + " · " + escapeHtml(e.shift) + " · Slot " + escapeHtml(String(e.scheduleSlot)) +
         (e.qtyType ? " · " + escapeHtml(e.qtyType) : "") + '</div>' +
         '<div class="recent-entry-sub">' + sub + '</div></div>' +
-        '<button type="button" class="link-btn" data-editentry="' + escapeHtml(e.entryId) + '">' + (e.status === "Needs Fix" ? "Fix" : "Edit") + '</button>';
+        '<button type="button" class="link-btn" data-editentry="' + escapeHtml(e.entryId) + '">' + (flagged ? "Fix" : "Edit") + '</button>';
       els.recentEntriesList.appendChild(row);
     });
     els.recentEntriesList.querySelectorAll("[data-editentry]").forEach((btn) => {
@@ -1082,11 +1223,17 @@
     updateNeedsFixPill();
   }
 
+  function flagRank(e) {
+    if (e.status === "Needs Fix" || e.status === "Conflict") return -1;
+    return 0;
+  }
+
   function loadEntryForEdit(entryId) {
     const entry = loadRecent().find((e) => e.entryId === entryId);
     if (!entry || !session) return;
     editingEntryId = entryId;
     editingQtyType = session.department === "Rolling" ? (entry.qtyType || null) : null;
+    editingLastKnownUpdated = entry.lastUpdated || null;
 
     els.machine.value = entry.machineId;
     els.shift.value = entry.shift;
@@ -1120,6 +1267,7 @@
   function cancelEdit() {
     editingEntryId = null;
     editingQtyType = null;
+    editingLastKnownUpdated = null;
     els.submitBtn.textContent = "Save entry";
     els.cancelEditBtn.classList.add("hidden");
     resetEntryFields();
@@ -1193,6 +1341,21 @@
 
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => switchSettingsTab(btn.dataset.tab));
+  });
+
+  // ---------- Event wiring: This month's parts ----------
+
+  els.partsSummaryPrevBtn.addEventListener("click", () => {
+    partsSummaryDate = new Date(partsSummaryDate.getFullYear(), partsSummaryDate.getMonth() - 1, 1);
+    loadPartsSummary();
+  });
+
+  els.partsSummaryNextBtn.addEventListener("click", () => {
+    const now = new Date();
+    const next = new Date(partsSummaryDate.getFullYear(), partsSummaryDate.getMonth() + 1, 1);
+    if (next.getFullYear() > now.getFullYear() || (next.getFullYear() === now.getFullYear() && next.getMonth() > now.getMonth())) return;
+    partsSummaryDate = next;
+    loadPartsSummary();
   });
 
   // ---------- Event wiring: settings forms ----------
@@ -1366,7 +1529,11 @@
 
   window.addEventListener("online", () => {
     updateNetPill();
-    flushQueue();
+    currentRetryDelay = BASE_RETRY_MS;
+    clearTimeout(retryTimer);
+    flushQueue().then((stillFailing) => {
+      scheduleNextFlush(stillFailing ? currentRetryDelay : BASE_RETRY_MS);
+    });
   });
   window.addEventListener("offline", updateNetPill);
 
@@ -1431,21 +1598,26 @@
           showToast("Enter a Manual capacity rate for this entry");
           return;
         }
+        const isEditingThis = editingEntryId && editingQtyType === "Manual";
         entries.push(Object.assign({}, baseFields, {
-          entryId: (editingEntryId && editingQtyType === "Manual") ? editingEntryId : uuid(),
+          entryId: isEditingThis ? editingEntryId : uuid(),
           qtyType: "Manual", producedQty: manual, manualCapRate: manualCapRate,
+          lastKnownUpdated: isEditingThis ? editingLastKnownUpdated : undefined,
         }));
       }
       if (auto !== "") {
+        const isEditingThis = editingEntryId && editingQtyType === "Auto";
         entries.push(Object.assign({}, baseFields, {
-          entryId: (editingEntryId && editingQtyType === "Auto") ? editingEntryId : uuid(),
+          entryId: isEditingThis ? editingEntryId : uuid(),
           qtyType: "Auto", producedQty: auto,
+          lastKnownUpdated: isEditingThis ? editingLastKnownUpdated : undefined,
         }));
       }
     } else {
       entries.push(Object.assign({}, baseFields, {
         entryId: editingEntryId || uuid(),
         qtyType: "", producedQty: els.producedQty.value,
+        lastKnownUpdated: editingEntryId ? editingLastKnownUpdated : undefined,
       }));
     }
 
@@ -1455,12 +1627,17 @@
     for (const entry of entries) {
       if (navigator.onLine && CONFIG.APPS_SCRIPT_URL) {
         const result = await sendToServer(entry);
+        if (result.conflict) {
+          markRecentConflict(entry.entryId, result.message);
+          showToast(result.message || "This entry was changed elsewhere — check Recent Entries");
+          return; // keep the form as-is; supervisor needs to reopen from Recent Entries
+        }
         if (result.rejected) {
           showToast(result.message || "Could not save — adjust the entry and try again");
           return; // keep the form as-is so they can fix it
         }
         if (result.ok) {
-          upsertRecent(entry, "Synced");
+          upsertRecent(entry, "Synced", null, result.lastUpdated);
           continue;
         }
       }
@@ -1471,6 +1648,7 @@
 
     editingEntryId = null;
     editingQtyType = null;
+    editingLastKnownUpdated = null;
     els.submitBtn.textContent = "Save entry";
     els.cancelEditBtn.classList.add("hidden");
     showToast(wasEditing ? "Entry updated" : "Entry saved");
@@ -1503,7 +1681,7 @@
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }
 
-    setInterval(flushQueue, 20000);
+    scheduleNextFlush(BASE_RETRY_MS);
     flushQueue();
   }
 

@@ -523,3 +523,58 @@ textarea { resize: vertical; }
 
 .scheduled-preview.hidden { display: none; }
 .scheduled-preview strong { color: var(--text); }
+
+/* ---------- This month's parts (supervisor, own department) ---------- */
+
+.settings-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.month-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.month-nav .icon-btn {
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+}
+
+.part-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.part-row:last-child { border-bottom: none; }
+.part-row-title { font-weight: 700; }
+.part-row-sub { color: var(--text-dim); font-size: 13px; margin-top: 2px; }
+
+.part-row-stats { text-align: right; white-space: nowrap; }
+.part-row-produced { font-weight: 700; font-size: 16px; }
+.part-row-planned { color: var(--text-dim); font-size: 13px; margin-top: 1px; }
+
+.part-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.part-badge-green { background: rgba(79,174,110,0.16); color: var(--green); }
+.part-badge-amber { background: rgba(226,166,59,0.18); color: var(--amber); }
+.part-badge-red { background: rgba(217,92,92,0.16); color: var(--red); }
+.part-badge-neutral { background: #263140; color: var(--text-dim); }
