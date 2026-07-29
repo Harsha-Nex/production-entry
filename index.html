@@ -276,7 +276,24 @@
           <label for="timeoutInput">Session timeout (hours)</label>
           <input id="timeoutInput" type="number" min="1" max="72">
         </div>
-        <button type="button" id="saveGeneralBtn" class="settings-save-btn">Save settings</button>
+       <button type="button" id="saveGeneralBtn" class="settings-save-btn">Save settings</button>
+      </div>
+      <div class="settings-form">
+        <div class="field">
+          <label for="slotsDeptSelect">Department</label>
+          <select id="slotsDeptSelect"></select>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="daySlotsInput">Day slots</label>
+            <input id="daySlotsInput" type="number" min="1" max="10">
+          </div>
+          <div class="field">
+            <label for="nightSlotsInput">Night slots</label>
+            <input id="nightSlotsInput" type="number" min="1" max="10">
+          </div>
+        </div>
+        <button type="button" id="updateSlotsBtn" class="settings-save-btn">Update everywhere</button>
       </div>
       <div class="settings-form">
         <div class="field">
