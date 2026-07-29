@@ -10,7 +10,7 @@
   const RECENT_MAX = 15;
 
   let ITEMS = [];
-  let SERVER_CONFIG = null; // { departments: {dept: [{machineId, displayName}]}, slotsAllowed: {dept: n}, reasons, sessionTimeoutHours, shiftTimes }
+  let SERVER_CONFIG = null; // { departments: {dept: [{machineId, displayName}]}, slotsAllowed: {dept: {Day, Night}}, reasons, sessionTimeoutHours, shiftTimes }
   let selectedItem = null;
   let session = null; // { name, department, loginAt }
   let currentPin = "";
@@ -205,11 +205,11 @@
     });
   }
 
-  // Schedule slots are per-department now (Slots Allowed on the Machines sheet),
-  // not a single global count -- Rolling gets 3, everyone else gets 2.
-  function refreshScheduleSlots(dept) {
+  // Schedule slots are per-department AND per-shift now (Day/Night can differ).
+  function refreshScheduleSlots(dept, shift) {
     const slots = [];
-    const maxSlots = (SERVER_CONFIG && SERVER_CONFIG.slotsAllowed && SERVER_CONFIG.slotsAllowed[dept]) || 2;
+    const cfg = (SERVER_CONFIG && SERVER_CONFIG.slotsAllowed && SERVER_CONFIG.slotsAllowed[dept]) || { Day: 2, Night: 2 };
+    const maxSlots = (String(shift).trim().toLowerCase() === "night" ? cfg.Night : cfg.Day) || 2;
     for (let i = 1; i <= maxSlots; i++) slots.push(String(i));
     fillSelect(els.scheduleSlot, slots, null);
   }
@@ -318,9 +318,9 @@
     els.sessionBar.classList.remove("hidden");
     els.sessionInfo.textContent = s.name + " · " + s.department;
     populateMachinesForDept(s.department);
-    refreshScheduleSlots(s.department);
     updateQtyFieldsForDept(s.department);
-    applyLast();
+    applyLast(); // restores last machine/shift before slots are computed for that shift
+    refreshScheduleSlots(s.department, els.shift.value);
     renderRecentEntries();
     refreshShiftUsage();
   }
@@ -654,9 +654,10 @@
       row.className = "settings-row";
       row.innerHTML =
         '<div><div class="settings-row-title">' + escapeHtml(m.displayName) + (m.isActive ? "" : " (inactive)") + '</div>' +
-        '<div class="settings-row-sub">' + (m.baseRate || 0) + ' / min</div></div>' +
+        '<div class="settings-row-sub">' + (m.baseRate || 0) + ' / min · Slots — Day ' + m.daySlotsAllowed + ' / Night ' + m.nightSlotsAllowed + '</div></div>' +
         '<div class="settings-row-actions">' +
         '<button type="button" class="link-btn" data-editcap="' + escapeHtml(m.machineId) + '">Edit rate</button>' +
+        '<button type="button" class="link-btn" data-editslots="' + escapeHtml(m.machineId) + '">Edit slots</button>' +
         '<button type="button" class="remove-x" data-remove="' + escapeHtml(m.machineId) + '" aria-label="Remove">×</button>' +
         '</div>';
       els.machinesList.appendChild(row);
@@ -687,6 +688,29 @@
         const data = await adminPost("updateMachineCapacity", { machineId: btn.dataset.editcap, baseRate: num });
         if (data.status === "ok") {
           showToast("Rate updated");
+          await loadServerConfig(true);
+          refreshMachinesList();
+        } else {
+          showToast(data.message || "Could not update");
+        }
+      });
+    });
+    els.machinesList.querySelectorAll("[data-editslots]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const current = machines.find((x) => x.machineId === btn.dataset.editslots);
+        if (!current) return;
+        const dayVal = prompt("Day shift slots for " + current.displayName + ":", current.daySlotsAllowed);
+        if (dayVal === null) return;
+        const nightVal = prompt("Night shift slots for " + current.displayName + ":", current.nightSlotsAllowed);
+        if (nightVal === null) return;
+        const day = Number(dayVal), night = Number(nightVal);
+        if (isNaN(day) || day < 1 || isNaN(night) || night < 1) {
+          showToast("Enter valid slot counts (1 or more)");
+          return;
+        }
+        const data = await adminPost("updateMachineCapacity", { machineId: btn.dataset.editslots, daySlotsAllowed: day, nightSlotsAllowed: night });
+        if (data.status === "ok") {
+          showToast("Slots updated");
           await loadServerConfig(true);
           refreshMachinesList();
         } else {
@@ -785,9 +809,13 @@
     return starts.concat(contains).slice(0, 20);
   }
 
-  function renderItemResults(list) {
+  function renderItemResults(list, query) {
     els.itemResults.innerHTML = "";
-    if (!list.length) {
+    const trimmed = String(query || "").trim();
+    const hasExactMatch = ITEMS.some((it) => String(it.code).toLowerCase() === trimmed.toLowerCase());
+    const offerAdd = trimmed.length >= 2 && !hasExactMatch;
+
+    if (!list.length && !offerAdd) {
       els.itemResults.classList.add("hidden");
       return;
     }
@@ -800,7 +828,48 @@
       row.addEventListener("click", () => selectItem(it));
       els.itemResults.appendChild(row);
     });
+
+    if (offerAdd) {
+      const addRow = document.createElement("div");
+      addRow.className = "item-row item-row-add";
+      addRow.innerHTML =
+        '<div class="item-code">+ Add "' + escapeHtml(trimmed) + '"</div>' +
+        '<div class="item-name">New item code</div>';
+      addRow.addEventListener("click", () => promptAddNewItem(trimmed));
+      els.itemResults.appendChild(addRow);
+    }
     els.itemResults.classList.remove("hidden");
+  }
+
+  // Frictionless by design: any supervisor can add a code they see on the
+  // floor that isn't in the master list yet, no admin gate. Immediately
+  // usable for this entry, and visible to other supervisors on their next
+  // item-master refresh (on load, or online reconnect).
+  async function promptAddNewItem(code) {
+    if (!CONFIG.APPS_SCRIPT_URL || !navigator.onLine) {
+      showToast("Connect to the internet to add a new item code");
+      return;
+    }
+    const name = prompt('Item name for "' + code + '" (optional):', "") || "";
+    try {
+      const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "addItem", secretToken: CONFIG.SECRET_TOKEN, code: code, name: name }),
+      });
+      const data = await res.json();
+      if (data.status === "ok") {
+        const newItem = { code: code, name: name };
+        ITEMS.unshift(newItem);
+        localStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify(ITEMS));
+        showToast("Item added");
+        selectItem(newItem);
+      } else {
+        showToast(data.message || "Could not add item");
+      }
+    } catch (e) {
+      showToast("Could not reach the server");
+    }
   }
 
   function selectItem(it) {
@@ -998,7 +1067,7 @@
 
     els.machine.value = entry.machineId;
     els.shift.value = entry.shift;
-    refreshScheduleSlots(session.department);
+    refreshScheduleSlots(session.department, entry.shift);
     els.scheduleSlot.value = entry.scheduleSlot;
 
     const item = ITEMS.find((it) => String(it.code) === String(entry.itemCode));
@@ -1230,6 +1299,7 @@
     onEntryInputsChanged();
   });
   els.shift.addEventListener("change", () => {
+    refreshScheduleSlots(session.department, els.shift.value);
     refreshShiftUsage();
     onEntryInputsChanged();
   });
@@ -1244,7 +1314,7 @@
   els.manualCapRate.addEventListener("input", onEntryInputsChanged);
 
   els.itemCodeInput.addEventListener("input", () => {
-    renderItemResults(searchItems(els.itemCodeInput.value));
+    renderItemResults(searchItems(els.itemCodeInput.value), els.itemCodeInput.value);
   });
 
   els.clearItem.addEventListener("click", clearItem);
