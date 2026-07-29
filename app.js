@@ -741,30 +741,6 @@ function populateMachDeptSelect() {
         }
       });
     });
-    els.machinesList.querySelectorAll("[data-editslots]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const current = machines.find((x) => x.machineId === btn.dataset.editslots);
-        if (!current) return;
-        const dayVal = prompt("Day shift slots for " + current.displayName + ":", current.daySlotsAllowed);
-        if (dayVal === null) return;
-        const nightVal = prompt("Night shift slots for " + current.displayName + ":", current.nightSlotsAllowed);
-        if (nightVal === null) return;
-        const day = Number(dayVal), night = Number(nightVal);
-        if (isNaN(day) || day < 1 || isNaN(night) || night < 1) {
-          showToast("Enter valid slot counts (1 or more)");
-          return;
-        }
-        const data = await adminPost("updateMachineCapacity", { machineId: btn.dataset.editslots, daySlotsAllowed: day, nightSlotsAllowed: night });
-        if (data.status === "ok") {
-          showToast("Slots updated");
-          await loadServerConfig(true);
-          refreshMachinesList();
-        } else {
-          showToast(data.message || "Could not update");
-        }
-      });
-    });
-  }
 
   function refreshReasonsList() {
     const reasons = SERVER_CONFIG.reasons || [];
