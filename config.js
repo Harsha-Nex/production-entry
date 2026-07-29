@@ -9,7 +9,7 @@
 const CONFIG = {
 
   // Paste the Web App URL from Code.gs deployment (see DEPLOY_GUIDE.md).
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxudLEHGV4nrtZM059iHITj_xWMs4eJ2avLQs-qxS_lsyo9XaKC7R27ZB9cpKwWk14WWw/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwdl4NBtyPyIdQ3XIMm1W_YeqF0ROWDCtstHYYVWTMhHW5emjOr0FjGa8Eez9rDvZC3_A/exec",
 
   // Must match SECRET_TOKEN in Code.gs exactly.
   SECRET_TOKEN: "MAFPL_2026",
