@@ -177,6 +177,7 @@ textarea { resize: vertical; }
 
 .item-code { font-weight: 700; }
 .item-name { color: var(--text-dim); font-size: 14px; margin-top: 2px; }
+.item-row-add .item-code { color: var(--green); }
 
 .selected-item {
   margin-top: 10px;
